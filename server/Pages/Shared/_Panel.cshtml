@@ -21,7 +21,6 @@
         var t = TimeSpan.FromSeconds(Math.Max(0, sec));
         return t.TotalMinutes < 60 ? t.ToString(@"mm\:ss") : t.ToString(@"hh\:mm\:ss");
     }
-    string RpmSuffix() => s.LastSpindleSpeed is double rpm ? $" · {rpm:0} RPM" : "";
 
     var orderedTools = s.Tools
         .Select(t => new { T = t, Rank = t.Grade is "warn" or "ng" ? 0 : 1 })
@@ -34,14 +33,11 @@
     var okTogglePending = true;
 }
 
-@if (s.CurrentTool is int cur)
-{
-    <div class="toolstrip">
-        <span class="pill curtool">T@(cur) in spindle</span>
-    </div>
-}
-
 <div class="statusbox @cls">
+    @if (s.CurrentTool is int cur)
+    {
+        <span class="pill curtool statustool">T@(cur) in spindle</span>
+    }
     <div class="reason">@s.StatusReason</div>
     <div class="shift">@s.ShiftName &middot; started @s.ShiftStartUtc.ToLocalTime().ToString("HH:mm")</div>
 </div>
@@ -55,24 +51,23 @@
             {
                 <div class="big">@Mmss(cs) / @Mmss(target)</div>
                 <div class="bar"><div class="fill green" style="width:@(Math.Clamp(cs / target * 100, 0, 100).ToString("0"))%"></div></div>
-                <div class="sub">spindle@(RpmSuffix())</div>
             }
             else
             {
                 <div class="big">in cycle</div>
-                <div class="sub">@Mmss(cs) elapsed@RpmSuffix()</div>
+                <div class="sub">@Mmss(cs) elapsed</div>
             }
         }
         else
         {
             <div class="big">in cycle</div>
-            <div class="sub">no counts yet@RpmSuffix()</div>
+            <div class="sub">no counts yet</div>
         }
     </div>
     <div class="card">
         <div class="label">Parts this shift</div>
         <div class="big">@s.PartsThisShift</div>
-        <div class="sub">@s.ExpectedParts expected so far</div>
+        <div class="sub">@s.ExpectedParts expected by shift end</div>
     </div>
     <div class="card">
         <div class="label">% of target</div>
@@ -90,7 +85,7 @@
     <div class="card">
         <div class="label">Spindle uptime</div>
         <div class="big">@s.SpindleUptimePercent.ToString("0")%</div>
-        <div class="sub">@(s.LastSpindleSpeed is double rpm ? $"{rpm:0} RPM · " : "")@(s.SpindleRunning ? "spindle running" : "spindle stopped")</div>
+        <div class="sub">@(s.LastSpindleSpeed is double rpm ? $"{rpm:0} RPM · " : "")@(s.SpindleRunning ? $"spindle ran {s.SpindleUptimePercent:0}% of shift so far" : "spindle stopped")</div>
     </div>
     <div class="card">
         <div class="label">Cycle time</div>
@@ -111,7 +106,7 @@
     <div class="label">Tools</div>
     <div class="tools-scroll">
         <table class="tools">
-            <tr><th>Tool</th><th>POT</th><th>Status</th><th>Life left</th><th>Cycles left</th><th>Grade</th></tr>
+            <tr><th>Tool</th><th>POT</th><th>Life left</th><th>Cycles left</th><th>Grade</th></tr>
             @foreach (var x in orderedTools)
             {
                 var t = x.T;
@@ -119,12 +114,11 @@
                 if (x.Rank == 1 && okTogglePending)
                 {
                     okTogglePending = false;
-                    <tr id="oktools" class="oktools" onclick="okToggle()"><td colspan="6"><span class="caret"></span>@toggleLabel</td></tr>
+                    <tr id="oktools" class="oktools" onclick="okToggle()"><td colspan="5"><span class="caret"></span>@toggleLabel</td></tr>
                 }
                 <tr class="@(x.Rank == 1 ? "okrow " : "")@(isCur ? "current" : "")">
                     <td>@(t.ToolNumber?.ToString() ?? "-")</td>
                     <td>@(t.Pot?.ToString() ?? "-")</td>
-                    <td>@t.Status</td>
                     <td>
                         @if (t.PercentRemaining is double pct)
                         {

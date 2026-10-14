@@ -40,25 +40,19 @@ a { color: #58a6ff; text-decoration: none; }
     background: #1a3350;
 }
 
-/* tool strip attached to the topbar (lives in the htmx-swapped panel):
-   shares the card shell — no double border/gap */
-.topbar.withstrip { border-bottom: none; border-radius: 10px 10px 0 0; margin-bottom: 0; }
-.toolstrip {
-    display: flex; gap: 10px; align-items: center;
-    background: var(--card); border: 1px solid var(--line); border-top: none;
-    border-radius: 0 0 10px 10px; padding: 0 14px 9px; margin-bottom: 14px;
-}
 .updated { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
 .updated.stale { color: var(--yellow); }
 .updated.old { color: var(--red); }
 .navlinks { display: inline-flex; gap: 10px; flex: none; white-space: nowrap; }
 
 .statusbox {
-    padding: 22px; border-radius: 14px; margin-bottom: 14px;
+    position: relative; padding: 22px; border-radius: 14px; margin-bottom: 14px;
     border: 1px solid var(--line); text-align: center;
 }
 .statusbox .reason { font-size: 18px; color: var(--text); }
 .statusbox .shift { color: var(--muted); margin-top: 6px; }
+/* current-tool pill rides inside the colored statusbox (top-right) */
+.statusbox .statustool { position: absolute; top: 14px; right: 14px; }
 .green  { background: #12351d; color: #7ee2a8; }
 .yellow { background: #3a2b08; color: #f2cc60; }
 .red    { background: #3c1210; color: #ff8f88; }

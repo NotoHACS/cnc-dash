@@ -47,7 +47,7 @@
             ? double.MaxValue
             : (DateTime.UtcNow - st.LastSampleUtc.Value).TotalSeconds;
         var updCls = age > 120 ? "old" : age > 30 ? "stale" : "";
-        <div class="topbar dot-@col@(st.CurrentTool is not null ? " withstrip" : "")">
+        <div class="topbar dot-@col">
             <span class="dot"></span>
             <span class="machine">@st.DisplayName</span>
             <span class="pill">@st.PartName</span>
