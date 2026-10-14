@@ -66,13 +66,13 @@ Env vars: `CNC_DASH_DB` (sqlite path), `CNC_DASH_ADMIN_PASSWORD` (default
 ## Collector install on the CNC (Windows)
 
 1. Download the latest `collector-win-x64.zip` from GitHub releases (or build
-   locally), extract to e.g. `C:\cncdash\collector`
+   locally), extract to e.g. `D:\cncdash\collector`
 2. Create `config_local.json`:
    ```json
    { "ApiKey": "<key from /dashboard/admin>",
      "ServerUrl": "https://cnc-dash.example.com" }
    ```
-3. Install as a service: `nssm install cncdash-collector C:\cncdash\collector\collector.exe`
+3. Install as a service: `nssm install cncdash-collector D:\cncdash\collector\collector.exe`
 4. (optional self-update) Task Scheduler or manual run of `update.bat` — set
    `CNC_UPDATE_REPO=<owner>/<repo>` env or edit update.bat, then it downloads
    releases, preserves `config_local.json`/`state.json`, restarts the service,
