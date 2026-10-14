@@ -11,6 +11,18 @@ test -x /usr/bin/dotnet || test -x "$DOTNET_ROOT/dotnet" || {
   echo "install .NET 8 runtime first"; exit 1; }
 apt-get install -y tzdata >/dev/null || true
 
+# dotnet build servers use named mutexes that live under /run/user/<uid>;
+# without a logind session (pct exec / containers) NuGet fails misleadingly.
+# (https://github.com/dotnet/sdk/issues/25775)
+UID_=$(id -u cncdash 2>/dev/null || true)
+if [ -n "$UID_" ]; then
+  cat > /etc/tmpfiles.d/cncdash-dotnet.conf <<EOF
+d /run/user/$UID_ 0755 root root -
+d /run/user/$UID_/dotnet 0700 root root -
+EOF
+  systemd-tmpfiles --create /etc/tmpfiles.d/cncdash-dotnet.conf
+fi
+
 echo "== publish server =="
 dotnet publish "$SRC/server" -c Release -o "$APP/server"
 
@@ -20,7 +32,8 @@ chown -R cncdash:cncdash "$APP"
 
 echo "== secrets =="
 if [ ! -f "$APP/secrets.env" ]; then
-  PW=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24)
+  # no tr|head pipeline: SIGPIPE under pipefail kills the script mid-write
+  PW=$(dd if=/dev/urandom bs=8 count=3 2>/dev/null | od -An -tx1 | tr -d ' \n')
   cat > "$APP/secrets.env" <<EOF
 CNC_DASH_ADMIN_PASSWORD=$PW
 EOF
