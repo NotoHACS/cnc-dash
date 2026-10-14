@@ -61,5 +61,10 @@ public class ToolStatus
     public string Grade { get; set; } = "na"; // ok | warn | ng | na
     public string? LifeType { get; set; }
     public double? PercentRemaining { get; set; }
+
+    // Part-count based tool life remaining. Only set when the agent's tool life
+    // type itself is part counts (PARTS / PART_COUNT); percent or minutes life
+    // cannot be converted into cycles honestly and stays null (rendered as "—").
+    public double? CyclesLeft { get; set; }
     public string? Status { get; set; }
 }

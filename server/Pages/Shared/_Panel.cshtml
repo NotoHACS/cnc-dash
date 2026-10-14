@@ -24,16 +24,17 @@
     string RpmSuffix() => s.LastSpindleSpeed is double rpm ? $" · {rpm:0} RPM" : "";
 
     var orderedTools = s.Tools
-        .Select(t => new { T = t, Rank = t.Grade == "ok" ? 2 : t.Grade == "na" ? 1 : 0 })
+        .Select(t => new { T = t, Rank = t.Grade is "warn" or "ng" ? 0 : 1 })
         .OrderBy(x => x.Rank)
         .ThenBy(x => x.T.ToolNumber ?? int.MaxValue)
         .ToList();
-    var okCount = orderedTools.Count(x => x.Rank == 2);
+    var collapsedCount = orderedTools.Count(x => x.Rank == 1);
+    var collapsedNa = orderedTools.Count(x => x.Rank == 1 && x.T.Grade == "na");
+    var toggleLabel = collapsedNa > 0 ? $"OK / N-A tools ({collapsedCount})" : $"OK tools ({collapsedCount})";
     var okTogglePending = true;
 }
 
 <div class="statusbox @cls">
-    <div class="state">@cls.ToUpperInvariant()</div>
     <div class="reason">@s.StatusReason</div>
     <div class="shift">@s.ShiftName &middot; started @s.ShiftStartUtc.ToLocalTime().ToString("HH:mm")</div>
 </div>
@@ -100,20 +101,27 @@
 </div>
 
 <div class="card wide">
-    <div class="label">Tools (current: @(s.CurrentTool?.ToString() ?? "-"))</div>
+    <div class="toolshead">
+        <span class="label">Tools</span>
+        @if (s.CurrentTool is int ct)
+        {
+            <span class="pill">T@ct in spindle</span>
+        }
+    </div>
     <div class="tools-scroll">
         <table class="tools">
-            <tr><th>Tool</th><th>POT</th><th>Status</th><th>Life left</th><th>Grade</th></tr>
+            <tr><th>Tool</th><th>POT</th><th>Status</th><th>Life left</th><th>Cycles left</th><th>Grade</th></tr>
             @foreach (var x in orderedTools)
             {
                 var t = x.T;
-                if (x.Rank == 2 && okTogglePending)
+                var isCur = t.ToolNumber != null && s.CurrentTool == t.ToolNumber;
+                if (x.Rank == 1 && okTogglePending)
                 {
                     okTogglePending = false;
-                    <tr id="oktools" class="oktools" onclick="okToggle()"><td colspan="5"><span class="caret"></span>OK tools (@okCount)</td></tr>
+                    <tr id="oktools" class="oktools" onclick="okToggle()"><td colspan="6"><span class="caret"></span>@toggleLabel</td></tr>
                 }
-                <tr class="@(x.Rank == 2 ? "okrow" : "")">
-                    <td>@(t.ToolNumber?.ToString() ?? "-") <span class="muted">@t.AssetId</span></td>
+                <tr class="@(x.Rank == 1 ? "okrow " : "")@(isCur ? "current" : "")">
+                    <td>@(t.ToolNumber?.ToString() ?? "-")</td>
                     <td>@(t.Pot?.ToString() ?? "-")</td>
                     <td>@t.Status</td>
                     <td>
@@ -125,6 +133,16 @@
                         else
                         {
                             <span class="muted">n/a</span>
+                        }
+                    </td>
+                    <td>
+                        @if (t.CyclesLeft is double cyc)
+                        {
+                            <span>@cyc.ToString("0")</span>
+                        }
+                        else
+                        {
+                            <span class="muted">&mdash;</span>
                         }
                     </td>
                     <td>

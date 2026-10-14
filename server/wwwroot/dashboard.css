@@ -41,11 +41,10 @@ a { color: #58a6ff; text-decoration: none; }
 .navlinks { display: inline-flex; gap: 10px; flex: none; white-space: nowrap; }
 
 .statusbox {
-    padding: 26px; border-radius: 14px; margin-bottom: 14px;
+    padding: 22px; border-radius: 14px; margin-bottom: 14px;
     border: 1px solid var(--line); text-align: center;
 }
-.statusbox .state { font-size: 44px; font-weight: 800; letter-spacing: 2px; }
-.statusbox .reason { font-size: 16px; margin-top: 4px; color: var(--text); }
+.statusbox .reason { font-size: 18px; color: var(--text); }
 .statusbox .shift { color: var(--muted); margin-top: 6px; }
 .green  { background: #12351d; color: #7ee2a8; }
 .yellow { background: #3a2b08; color: #f2cc60; }
@@ -80,6 +79,10 @@ a { color: #58a6ff; text-decoration: none; }
 .tools th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .tools td { padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .tools tr.selected td { background: #1c2530; }
+.tools tr.current td {
+    background: #1c2530; font-weight: 700;
+    box-shadow: inset 3px 0 0 #58a6ff;
+}
 .tools-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .tools-scroll .tools td, .tools-scroll .tools th { white-space: nowrap; }
 .oktools { cursor: pointer; user-select: none; }
@@ -129,4 +132,6 @@ button:hover { background: #2a313b; }
 .dot-off .dot    { background: #3b4250; }
 .mcard .mname { font-weight: 700; font-size: 18px; }
 .mcard .mstat { font-size: 20px; margin: 6px 0; }
-.statusbox .state { text-transform: uppercase; }
+
+.toolshead { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.toolshead .label { margin-bottom: 0; }

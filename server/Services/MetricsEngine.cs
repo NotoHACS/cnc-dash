@@ -291,6 +291,22 @@ public class MetricsEngine
             else if (IsExpiredStatus(t.Status))
                 grade = "ng";
 
+            // cycles left: only REAL count-based life is honest to expose. For
+            // percent-based types (PARTS_PERCENT / MINUTES_PERCENT) there is no
+            // cycle base value on hand, so leave null (view renders an em-dash).
+            double? cyclesLeft = null;
+            var lt = (t.LifeType ?? "").ToUpperInvariant();
+            if (t.LifeValue.HasValue && lt is "PARTS" or "PART_COUNT")
+            {
+                if (t.CountDirection == "UP")
+                {
+                    if (t.LifeInitial is > 0)
+                        cyclesLeft = Math.Max(0, t.LifeInitial.Value - t.LifeValue.Value);
+                }
+                else
+                    cyclesLeft = Math.Max(0, t.LifeValue.Value);
+            }
+
             return new ToolStatus
             {
                 AssetId = t.AssetId,
@@ -299,6 +315,7 @@ public class MetricsEngine
                 Grade = grade,
                 LifeType = t.LifeType,
                 PercentRemaining = pct,
+                CyclesLeft = cyclesLeft,
                 Status = t.Status,
             };
         }).OrderBy(t => t.ToolNumber ?? int.MaxValue).ToList();
