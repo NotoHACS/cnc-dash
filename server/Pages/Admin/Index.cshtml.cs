@@ -40,6 +40,7 @@ public class IndexModel : PageModel
     [BindProperty] public double WarnThresholdPercent { get; set; }
     [BindProperty] public int CycleLearningWindow { get; set; }
     [BindProperty] public double SpindleRunningRpm { get; set; }
+    [BindProperty] public int SpindleStopDelaySeconds { get; set; }
     [BindProperty] public double ExpectedCycleSeconds { get; set; }
     [BindProperty] public string? TimeZone { get; set; }
 
@@ -94,6 +95,7 @@ public class IndexModel : PageModel
         cfg.WarnThresholdPercent = Math.Clamp(WarnThresholdPercent, 0, 100);
         cfg.CycleLearningWindow = Math.Max(3, CycleLearningWindow);
         cfg.SpindleRunningRpm = Math.Max(0, SpindleRunningRpm);
+        cfg.SpindleStopDelaySeconds = Math.Max(0, SpindleStopDelaySeconds);
         cfg.ExpectedCycleSeconds = Math.Max(0, ExpectedCycleSeconds);
         cfg.TimeZone = string.IsNullOrWhiteSpace(TimeZone) ? cfg.TimeZone : TimeZone.Trim();
 
@@ -135,6 +137,7 @@ public class IndexModel : PageModel
         WarnThresholdPercent = cfg.WarnThresholdPercent;
         CycleLearningWindow = cfg.CycleLearningWindow;
         SpindleRunningRpm = cfg.SpindleRunningRpm;
+        SpindleStopDelaySeconds = cfg.SpindleStopDelaySeconds;
         ExpectedCycleSeconds = cfg.ExpectedCycleSeconds;
         TimeZone = cfg.TimeZone;
 

@@ -38,6 +38,10 @@ public class MachineConfig
 
     public double SpindleRunningRpm { get; set; } = 500;
 
+    // Spindle counts as stopped only after being below threshold this many
+    // continuous seconds; shorter dips (tool changes) keep it "running".
+    public int SpindleStopDelaySeconds { get; set; } = 30;
+
     public string TimeZone { get; set; } = "America/New_York";
 
     // Expected cycle time in seconds (operator estimate). Used until the server has

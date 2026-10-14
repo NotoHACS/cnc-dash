@@ -4,6 +4,8 @@ using CncDash.Server.Data.Entities;
 using CncDash.Server.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Data.Sqlite;
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -35,6 +37,22 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<CncDbContext>();
     db.Database.EnsureCreated();
+
+    // additive schema patch for existing databases created before
+    // SpindleStopDelaySeconds existed (EnsureCreated only builds fresh DBs)
+    var sqconn = (SqliteConnection)db.Database.GetDbConnection();
+    if (sqconn.State != ConnectionState.Open) await sqconn.OpenAsync();
+    using (var cmd = sqconn.CreateCommand())
+    {
+        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('MachineConfigs') WHERE name = 'SpindleStopDelaySeconds'";
+        if (Convert.ToInt32(await cmd.ExecuteScalarAsync()) == 0)
+        {
+            cmd.CommandText = "ALTER TABLE MachineConfigs ADD COLUMN SpindleStopDelaySeconds INTEGER NOT NULL DEFAULT 30";
+            await cmd.ExecuteNonQueryAsync();
+            Console.WriteLine("[schema] MachineConfigs.SpindleStopDelaySeconds added (default 30)");
+        }
+    }
+    if (sqconn.State == ConnectionState.Open) await sqconn.CloseAsync();
 
     if (!await db.Machines.AnyAsync())
     {

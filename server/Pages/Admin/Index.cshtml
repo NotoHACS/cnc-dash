@@ -72,6 +72,7 @@
                 <label>Green threshold % <input type="number" min="1" max="200" step="1" asp-for="GreenThresholdPercent" /></label>
                 <label>Tool warn threshold % remaining <input type="number" min="0" max="100" step="1" asp-for="WarnThresholdPercent" /></label>
                 <label>Spindle "running" RPM threshold <input type="number" min="0" asp-for="SpindleRunningRpm" /></label>
+                <label>Spindle stop delay seconds (dip tolerance) <input type="number" min="0" step="1" asp-for="SpindleStopDelaySeconds" /></label>
                 <label>Learning window (cycles) <input type="number" min="3" asp-for="CycleLearningWindow" /></label>
                 <label>Time zone (IANA, e.g. America/New_York) <input asp-for="TimeZone" /></label>
             </div>

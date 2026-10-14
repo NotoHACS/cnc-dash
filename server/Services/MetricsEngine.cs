@@ -88,26 +88,55 @@ public class MetricsEngine
             speedRows.Insert(0, lastSpeedBefore);
         }
 
-        // up-intervals: [ts of sample showing "running", ts of next state change)
+        // up-intervals: [ts of sample showing "running", stop confirmed after
+        // SpindleStopDelaySeconds continuous below threshold) — brief dips
+        // (tool changes) count as running time.
+        var stopDelay = TimeSpan.FromSeconds(Math.Max(0, cfg.SpindleStopDelaySeconds));
+
         double upSeconds = 0;
         DateTime? runFrom = null;
+        DateTime? dipFrom = null;
         foreach (var row in speedRows.OrderBy(r => r.TsUtc))
         {
             var running = (row.SpindleSpeed ?? 0) >= cfg.SpindleRunningRpm;
-            if (running && runFrom == null) runFrom = row.TsUtc;
-            else if (!running && runFrom != null)
+            if (running)
             {
-                upSeconds += (row.TsUtc - runFrom.Value).TotalSeconds;
+                if (runFrom == null) runFrom = row.TsUtc;
+                dipFrom = null; // resumed before the delay elapsed: interval stays continuous
+            }
+            else if (runFrom != null && dipFrom == null)
+            {
+                dipFrom = row.TsUtc;
+            }
+            else if (runFrom != null && dipFrom != null && row.TsUtc - dipFrom.Value > stopDelay)
+            {
+                upSeconds += (dipFrom.Value - runFrom.Value).TotalSeconds;
                 runFrom = null;
+                dipFrom = null;
             }
         }
         if (runFrom != null)
-            upSeconds += (nowUtc - runFrom.Value).TotalSeconds;
+        {
+            if (dipFrom != null && nowUtc - dipFrom.Value > stopDelay)
+                upSeconds += (dipFrom.Value - runFrom.Value).TotalSeconds;
+            else
+                upSeconds += (nowUtc - runFrom.Value).TotalSeconds;
+        }
 
         var lastSpeed = speedRows.LastOrDefault()?.SpindleSpeed;
+
+        // spindle is "running" while ANY sample inside the stop-delay window is
+        // at/above threshold, so a momentary dip (tool change) doesn't flip to stopped
+        var recentSpeeds = speedRows
+            .Where(r => r.TsUtc >= nowUtc - stopDelay)
+            .Select(r => r.SpindleSpeed)
+            .Where(v => v.HasValue)
+            .ToList();
         if (lastSpeed.HasValue)
         {
-            status.SpindleRunning = lastSpeed >= cfg.SpindleRunningRpm;
+            status.SpindleRunning = recentSpeeds.Count > 0
+                ? recentSpeeds.Max()!.Value >= cfg.SpindleRunningRpm
+                : lastSpeed >= cfg.SpindleRunningRpm;
         }
         else
         {
