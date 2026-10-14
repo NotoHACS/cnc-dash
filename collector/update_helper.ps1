@@ -1,5 +1,6 @@
 # CncDash collector self-update helper.
-# Downloads the latest GitHub release (collector-win-x64.zip + .sha256), verifies it,
+# Downloads the latest GitHub release (collector-win-x64.zip or collector-win-x86.zip
+# per the machine's architecture, + .sha256), verifies it,
 # swaps binaries in place (preserving config_local.json + state.json), restarts the
 # NSSM service, and rolls back if the service fails to come up.
 param(
@@ -13,7 +14,8 @@ $ErrorActionPreference = "Stop"
 $ExeDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Log = Join-Path $ExeDir "update.log"
 $VersionFile = Join-Path $ExeDir "version.txt"
-$ZipName = "collector-win-x64.zip"
+$Rid = if ($env:PROCESSOR_ARCHITECTURE -eq "x86" -and -not $env:PROCESSOR_ARCHITEW6432) { "win-x86" } else { "win-x64" }
+$ZipName = "collector-$Rid.zip"
 
 function Log($msg) {
     $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg"

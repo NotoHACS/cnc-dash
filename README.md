@@ -73,8 +73,9 @@ Env vars: `CNC_DASH_DB` (sqlite path), `CNC_DASH_ADMIN_PASSWORD` (default
 
 ## Collector install on the CNC (Windows)
 
-1. Download the latest `collector-win-x64.zip` from GitHub releases (or build
-   locally), extract to e.g. `D:\cncdash\collector`
+1. Download the latest `collector-win-x64.zip` (or `collector-win-x86.zip` for
+   32-bit Windows) from GitHub releases (or build locally), extract to e.g.
+   `D:\cncdash\collector`
 2. Create `config_local.json`:
    ```json
    { "ApiKey": "<key from /dashboard/admin>",

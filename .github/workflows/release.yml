@@ -18,30 +18,40 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Build collector (win-x64 single file)
-        run: dotnet publish collector -c Release -o publish
+      - name: Build collector (win-x64 + win-x86 single file)
+        run: |
+          dotnet publish collector -c Release -r win-x64 -o publish/win-x64
+          dotnet publish collector -c Release -r win-x86 -o publish/win-x86
 
       - name: Write version file
         shell: pwsh
         run: |
           $tag = if ($env:GITHUB_REF -like "refs/tags/*") { $env:GITHUB_REF -replace "refs/tags/", "" } else { "dev-$(Get-Date -Format yyyyMMddHHmm)" }
-          Set-Content -Path publish/version.txt -Value $tag
+          foreach ($rid in @("win-x64", "win-x86")) {
+            Set-Content -Path "publish/$rid/version.txt" -Value $tag
+          }
 
       - name: Zip + checksum
         shell: pwsh
         run: |
-          Compress-Archive -Path publish/* -DestinationPath collector-win-x64.zip
-          $h = (Get-FileHash collector-win-x64.zip -Algorithm SHA256).Hash
-          "$h  collector-win-x64.zip" | Out-File -Encoding ascii collector-win-x64.zip.sha256
+          foreach ($rid in @("win-x64", "win-x86")) {
+            $zip = "collector-$rid.zip"
+            Compress-Archive -Path "publish/$rid/*" -DestinationPath $zip
+            $h = (Get-FileHash $zip -Algorithm SHA256).Hash
+            "$h  $zip" | Out-File -Encoding ascii "$zip.sha256"
+          }
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: collector-win-x64
+          name: collector-artifacts
           path: |
             collector-win-x64.zip
             collector-win-x64.zip.sha256
-            publish/version.txt
+            collector-win-x86.zip
+            collector-win-x86.zip.sha256
+            publish/win-x64/version.txt
+            publish/win-x86/version.txt
 
   github-release:
     if: startsWith(github.ref, 'refs/tags/')
@@ -50,7 +60,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: collector-win-x64
+          name: collector-artifacts
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -58,4 +68,6 @@ jobs:
           files: |
             collector-win-x64.zip
             collector-win-x64.zip.sha256
+            collector-win-x86.zip
+            collector-win-x86.zip.sha256
           body: "Collector release ${{ github.ref_name }} — run update.bat on the CNC to pick this up."
