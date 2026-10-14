@@ -1,5 +1,6 @@
 using CncDash.Server.Data;
 using CncDash.Server.Data.Entities;
+using CncDash.Server.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -12,7 +13,13 @@ namespace CncDash.Server.Pages.Admin;
 public class IndexModel : PageModel
 {
     private readonly CncDbContext db;
-    public IndexModel(CncDbContext db) => this.db = db;
+    private readonly MachineResolver resolver;
+
+    public IndexModel(CncDbContext db, MachineResolver resolver)
+    {
+        this.db = db;
+        this.resolver = resolver;
+    }
 
     public List<MachineRow> Machines { get; set; } = new();
     public string Message { get; set; } = "";
@@ -39,14 +46,31 @@ public class IndexModel : PageModel
     [BindProperty] public string? NewMachineId { get; set; }
     [BindProperty] public string? NewMachineName { get; set; }
 
-    private string SelectedId =>
-        Request.Query["machine"].FirstOrDefault() is { Length: > 0 } m ? m : EditMachineId;
-
-    public async Task OnGet()
+    public async Task<IActionResult> OnGet(string? machine)
     {
         Machines = await LoadMachines();
-        var target = SelectedId is { Length: > 0 } ? SelectedId : Machines.FirstOrDefault()?.Id;
-        if (target != null) LoadForm(target);
+
+        // route segment first, then legacy ?machine=, then the id posted back
+        // from the form, then the first machine
+        if (string.IsNullOrEmpty(machine) && Request.Query.TryGetValue("machine", out var q))
+            machine = q.FirstOrDefault();
+        if (string.IsNullOrEmpty(machine))
+            machine = EditMachineId;
+
+        Machine? target = null;
+        if (!string.IsNullOrEmpty(machine))
+        {
+            var resolved = await resolver.ResolveAsync(machine);
+            if (resolved?.Machine is not null)
+                target = resolved.Machine;
+            if (resolved?.AmbiguousCandidates is { Count: > 0 } amb)
+                Message = $"machine '{machine}' is ambiguous: {string.Join(", ", amb)}";
+        }
+        target ??= await db.Machines.AsNoTracking().OrderBy(m => m.Id).FirstOrDefaultAsync();
+
+        if (target != null)
+            LoadForm(target.Id);
+        return Page();
     }
 
     public async Task<IActionResult> OnPostSaveAsync()
@@ -56,7 +80,7 @@ public class IndexModel : PageModel
         if (cfg is null || machine is null)
         {
             Message = $"machine '{EditMachineId}' not found";
-            await OnGet();
+            await OnGet(null);
             return Page();
         }
 
@@ -84,7 +108,7 @@ public class IndexModel : PageModel
         if (string.IsNullOrWhiteSpace(id) || await db.Machines.AnyAsync(m => m.Id == id))
         {
             Message = "machine id empty or already exists";
-            await OnGet();
+            await OnGet(null);
             return Page();
         }
         var key = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));

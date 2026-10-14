@@ -1,27 +1,61 @@
-@page "/dashboard"
+@page "/dashboard/{machine?}"
 @model CncDash.Server.Pages.Dashboard.IndexModel
 
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>@Model.Status.MachineId — CNC Dashboard</title>
+    <title>CNC Dashboard</title>
     <link rel="stylesheet" href="/dashboard.css" />
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
 </head>
 <body>
 <div class="wrap">
-    <div class="topbar">
-        <span class="machine">@Model.Status.DisplayName</span>
-        <span class="part">@Model.Status.PartName</span>
-        <span class="program">@Model.Status.Program</span>
-        <span class="muted">updated @Model.Status.LastSampleUtc?.ToLocalTime().ToString("HH:mm:ss")</span>
-    </div>
-    <div id="live" hx-get="/dashboard/panel?machine=@Model.Status.MachineId"
-         hx-trigger="every 5s" hx-swap="innerHTML">
-        <partial name="_Panel" model="Model.Status" />
-    </div>
-    <div class="footer"><a href="/dashboard/admin">admin</a></div>
+    @if (Model.ShowPicker)
+    {
+        <div class="topbar">
+            <span class="machine">CNC Dashboard</span>
+            @if (Model.Notice != null)
+            {
+                <span class="msg">@Model.Notice</span>
+            }
+            <span class="muted right"><a href="/dashboard/admin">admin</a></span>
+        </div>
+        <div class="cardgrid">
+            @foreach (var c in Model.MachineCards)
+            {
+                <a class="mcard dot-@(c.Color.ToString().ToLowerInvariant())" href="/dashboard/@Uri.EscapeDataString(c.Short)">
+                    <div class="mcard-head">
+                        <span class="dot"></span>
+                        <span class="mname">@c.DisplayName</span>
+                    </div>
+                    <div class="mstat">@c.PartsThisShift parts &middot; @c.PercentOfExpected.ToString("0")%</div>
+                    <div class="muted">@c.Id</div>
+                </a>
+            }
+            @if (Model.MachineCards.Count == 0)
+            {
+                <div class="card wide muted">No machines configured yet — <a href="/dashboard/admin">add one in admin</a>.</div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="topbar">
+            <span class="machine">@Model.Status!.DisplayName</span>
+            <span class="part">@Model.Status.PartName</span>
+            <span class="program">@Model.Status.Program</span>
+            <span class="muted">updated @Model.Status.LastSampleUtc?.ToLocalTime().ToString("HH:mm:ss")</span>
+        </div>
+        <div id="live" hx-get="/dashboard/panel/@Uri.EscapeDataString(Model.Status.MachineId)"
+             hx-trigger="every 5s" hx-swap="innerHTML">
+            <partial name="_Panel" model="Model.Status" />
+        </div>
+        <div class="footer">
+            <a href="/dashboard">&larr; all machines</a> |
+            <a href="/dashboard/admin/@Uri.EscapeDataString(Model.Status.MachineId)">admin</a>
+        </div>
+    }
 </div>
 </body>
 </html>

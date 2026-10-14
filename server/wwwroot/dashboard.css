@@ -97,4 +97,20 @@ input[type="checkbox"] { width: auto; }
 button { background: #21262d; width: auto; cursor: pointer; }
 button:hover { background: #2a313b; }
 .footer { margin-top: 16px; text-align: right; }
+
+.cardgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.mcard {
+    display: block; background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px; color: var(--text);
+}
+.mcard:hover { border-color: #58a6ff; }
+.mcard-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.mcard .dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; flex: none; }
+.dot-green .dot  { background: var(--green); }
+.dot-yellow .dot { background: var(--yellow); }
+.dot-red .dot    { background: var(--red); }
+.dot-learning .dot { background: #6c8cff; box-shadow: 0 0 0 3px #1d2440; }
+.dot-off .dot    { background: #3b4250; }
+.mcard .mname { font-weight: 700; font-size: 18px; }
+.mcard .mstat { font-size: 20px; margin: 6px 0; }
 .statusbox .state { text-transform: uppercase; }

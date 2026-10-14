@@ -14,6 +14,7 @@ var dbPath = builder.Configuration["CncDash:DbPath"]
 Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
 builder.Services.AddSingleton<JsonOptionsProvider>();
+builder.Services.AddSingleton<MachineResolver>();
 builder.Services.AddDbContext<CncDbContext>(o => o.UseSqlite($"Data Source={dbPath}"));
 builder.Services.AddSingleton<MetricsEngine>();
 
@@ -70,9 +71,16 @@ app.MapGet("/healthz", async (CncDbContext db) =>
 
 app.MapIngest();
 
-app.MapGet("/api/status/{machineId}", async (string machineId, MetricsEngine engine) =>
+app.MapGet("/api/status/{segment}", async (string segment, MachineResolver resolver, MetricsEngine engine) =>
 {
-    var status = await engine.ComputeAsync(machineId);
+    var resolved = await resolver.ResolveAsync(segment);
+    if (resolved?.Machine is not { } machine)
+    {
+        return resolved is not null && resolved.AmbiguousCandidates is { Count: > 0 } list
+            ? Results.Conflict(new { ambiguous = list })
+            : Results.NotFound();
+    }
+    var status = await engine.ComputeAsync(machine.Id);
     return status is null ? Results.NotFound() : Results.Ok(status);
 });
 

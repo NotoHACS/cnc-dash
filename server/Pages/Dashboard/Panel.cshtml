@@ -1,6 +1,13 @@
-@page "/dashboard/panel"
+@page "/dashboard/panel/{machine?}"
 @model CncDash.Server.Pages.Dashboard.PanelModel
 @{
     Layout = null;
 }
-<partial name="_Panel" model="Model.Status" />
+@if (!string.IsNullOrEmpty(Model.ErrorMessage))
+{
+    <div class="card wide">@Model.ErrorMessage</div>
+}
+else
+{
+    <partial name="_Panel" model="Model.Status" />
+}

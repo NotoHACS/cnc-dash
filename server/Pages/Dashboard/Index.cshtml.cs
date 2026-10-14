@@ -1,50 +1,102 @@
 using CncDash.Server.Data;
+using CncDash.Server.Data.Entities;
 using CncDash.Server.Services;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using System.Text.RegularExpressions;
 
 namespace CncDash.Server.Pages.Dashboard;
 
 public class IndexModel : PageModel
 {
     private readonly MetricsEngine engine;
+    private readonly MachineResolver resolver;
     private readonly IServiceScopeFactory scopes;
-    public IndexModel(MetricsEngine engine, IServiceScopeFactory scopes)
+
+    public IndexModel(MetricsEngine engine, MachineResolver resolver, IServiceScopeFactory scopes)
     {
         this.engine = engine;
+        this.resolver = resolver;
         this.scopes = scopes;
     }
 
-    public MachineStatus Status { get; set; } = new() { MachineId = "?" };
-    public List<string> MachineIds { get; set; } = new();
+    public MachineStatus? Status { get; set; }
+    public List<MachineCard> MachineCards { get; set; } = new();
+    public string? Notice { get; set; }
+    public bool ShowPicker { get; set; }
 
     public async Task OnGet(string? machine)
     {
-        using var scope = scopes.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<CncDbContext>();
-        MachineIds = await db.Machines.Select(m => m.Id).OrderBy(x => x).ToListAsync();
+        if (string.IsNullOrEmpty(machine) && Request.Query.TryGetValue("machine", out var q))
+            machine = q.FirstOrDefault();
 
-        var id = machine ?? MachineIds.FirstOrDefault();
-        if (id is null)
+        var result = await resolver.ResolveAsync(machine);
+
+        if (result is null)
         {
-            Status = new MachineStatus { MachineId = "?", StatusReason = "No machines configured — visit /dashboard/admin" };
+            ShowPicker = true;
+            await LoadCardsAsync();
             return;
         }
-        Status = await engine.ComputeAsync(id)
-                 ?? new MachineStatus { MachineId = id, StatusReason = "Not found" };
+
+        if (result.NotFound)
+        {
+            ShowPicker = true;
+            Notice = $"machine '{machine}' not found";
+            await LoadCardsAsync();
+            return;
+        }
+
+        if (result.AmbiguousCandidates is { Count: > 0 } list)
+        {
+            ShowPicker = true;
+            Notice = $"'{machine}' is ambiguous: {string.Join(", ", list)} — pick one";
+            await LoadCardsAsync();
+            return;
+        }
+
+        Status = await engine.ComputeAsync(result.Machine!.Id)
+                 ?? new MachineStatus { MachineId = result.Machine.Id, StatusReason = "config missing" };
+    }
+
+    private async Task LoadCardsAsync()
+    {
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CncDbContext>();
+        var machines = await db.Machines.AsNoTracking().OrderBy(m => m.Id).ToListAsync();
+
+        var cards = new List<MachineCard>();
+        foreach (var m in machines)
+        {
+            var s = await engine.ComputeAsync(m.Id);
+            cards.Add(new MachineCard
+            {
+                Id = m.Id,
+                Short = MachineCard.ShortLabel(m.Id),
+                DisplayName = s?.DisplayName ?? m.DisplayName,
+                Color = s?.Color ?? StatusColor.Off,
+                PartsThisShift = s?.PartsThisShift ?? 0,
+                PercentOfExpected = s?.PercentOfExpected ?? 0,
+            });
+        }
+        MachineCards = cards;
     }
 }
 
-public class PanelModel : PageModel
+public class MachineCard
 {
-    private readonly MetricsEngine engine;
-    public PanelModel(MetricsEngine engine) => this.engine = engine;
+    public string Id { get; set; } = default!;
+    public string Short { get; set; } = default!;
+    public string DisplayName { get; set; } = default!;
+    public StatusColor Color { get; set; }
+    public long PartsThisShift { get; set; }
+    public double PercentOfExpected { get; set; }
 
-    public MachineStatus Status { get; set; } = new() { MachineId = "?" };
+    private static readonly Regex TrailingDigits = new(@"(\d+)$", RegexOptions.Compiled);
 
-    public async Task OnGet(string machine)
+    public static string ShortLabel(string machineId)
     {
-        Status = await engine.ComputeAsync(machine)
-                 ?? new MachineStatus { MachineId = machine, StatusReason = "Not found" };
+        var m = TrailingDigits.Match(machineId);
+        return m.Success ? m.Groups[1].Value : machineId;
     }
 }

@@ -25,12 +25,17 @@ agent, with an admin-configurable metrics model.
 
 ## URLs
 
+Machine segment accepts the full id (`cnc12`) or the short number (`12`);
+exact id wins, otherwise a unique suffix match resolves it. Without a segment
+the dashboard shows a card grid of all machines.
+
 | Path | What |
 |---|---|
-| `/dashboard` | live dashboard (auto-refresh 5s) |
-| `/dashboard/admin` | config: shift times, part name, parts/cycle, thresholds, machines + API keys |
-| `/api/status/{machine}` | machine status JSON |
-| `POST /api/ingest/{machine}` | collector ingest endpoint (X-Api-Key) |
+| `/dashboard` | machine picker (live cards) |
+| `/dashboard/12` | live dashboard for machine cnc12 (auto-refresh 5s; legacy `?machine=` still works) |
+| `/dashboard/admin/12` | config for machine: shift times, part name, parts/cycle, thresholds, API keys |
+| `/api/status/12` | machine status JSON (`409` + candidate list if a segment is ambiguous) |
+| `POST /api/ingest/{machineId}` | collector ingest endpoint (by exact machine id, X-Api-Key) |
 | `/healthz` | health check |
 
 ## Status colors
