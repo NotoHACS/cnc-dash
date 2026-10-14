@@ -35,6 +35,19 @@ a { color: #58a6ff; text-decoration: none; }
     display: inline-block; padding: 2px 10px; border-radius: 99px;
     background: #1f2530; color: var(--muted); font-size: 12px;
 }
+.pill.curtool {
+    border: 1px solid #58a6ff; color: #9ecbff;
+    background: #1a3350;
+}
+
+/* tool strip attached to the topbar (lives in the htmx-swapped panel):
+   shares the card shell — no double border/gap */
+.topbar.withstrip { border-bottom: none; border-radius: 10px 10px 0 0; margin-bottom: 0; }
+.toolstrip {
+    display: flex; gap: 10px; align-items: center;
+    background: var(--card); border: 1px solid var(--line); border-top: none;
+    border-radius: 0 0 10px 10px; padding: 0 14px 9px; margin-bottom: 14px;
+}
 .updated { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
 .updated.stale { color: var(--yellow); }
 .updated.old { color: var(--red); }
@@ -132,6 +145,3 @@ button:hover { background: #2a313b; }
 .dot-off .dot    { background: #3b4250; }
 .mcard .mname { font-weight: 700; font-size: 18px; }
 .mcard .mstat { font-size: 20px; margin: 6px 0; }
-
-.toolshead { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
-.toolshead .label { margin-bottom: 0; }

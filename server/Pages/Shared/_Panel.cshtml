@@ -34,6 +34,13 @@
     var okTogglePending = true;
 }
 
+@if (s.CurrentTool is int cur)
+{
+    <div class="toolstrip">
+        <span class="pill curtool">T@(cur) in spindle</span>
+    </div>
+}
+
 <div class="statusbox @cls">
     <div class="reason">@s.StatusReason</div>
     <div class="shift">@s.ShiftName &middot; started @s.ShiftStartUtc.ToLocalTime().ToString("HH:mm")</div>
@@ -101,13 +108,7 @@
 </div>
 
 <div class="card wide">
-    <div class="toolshead">
-        <span class="label">Tools</span>
-        @if (s.CurrentTool is int ct)
-        {
-            <span class="pill">T@ct in spindle</span>
-        }
-    </div>
+    <div class="label">Tools</div>
     <div class="tools-scroll">
         <table class="tools">
             <tr><th>Tool</th><th>POT</th><th>Status</th><th>Life left</th><th>Cycles left</th><th>Grade</th></tr>
