@@ -1,0 +1,10 @@
+{
+  "AgentUrl": "http://localhost:5000",
+  "DevicePath": "CNC_12",
+  "PollSeconds": 2,
+  "AssetSeconds": 60,
+  "ServerUrl": "http://localhost:5154",
+  "MachineId": "cnc12",
+  "ApiKey": "",
+  "UploadSeconds": 5
+}

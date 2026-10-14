@@ -1,0 +1,79 @@
+@model CncDash.Server.Services.MachineStatus
+@using CncDash.Server.Services
+@{
+    var s = Model;
+    var cls = s.Color switch
+    {
+        StatusColor.Green => "green",
+        StatusColor.Yellow => "yellow",
+        StatusColor.Red => "red",
+        StatusColor.Learning => "learning",
+        _ => "off",
+    };
+}
+
+<div class="statusbox @cls">
+    <div class="state">@cls.ToUpperInvariant()</div>
+    <div class="reason">@s.StatusReason</div>
+    <div class="shift">@s.ShiftName &middot; started @s.ShiftStartUtc.ToLocalTime().ToString("HH:mm")</div>
+</div>
+
+<div class="grid">
+    <div class="card">
+        <div class="label">Parts this shift</div>
+        <div class="big">@s.PartsThisShift</div>
+        <div class="sub">@s.ExpectedParts expected so far</div>
+    </div>
+    <div class="card">
+        <div class="label">% of theoretical max</div>
+        <div class="big">@s.PercentOfExpected.ToString("0")%</div>
+        <div class="bar"><div class="fill @cls" style="width:@(Math.Min(100, s.PercentOfExpected).ToString("0"))%"></div></div>
+    </div>
+    <div class="card">
+        <div class="label">Spindle uptime</div>
+        <div class="big">@s.SpindleUptimePercent.ToString("0")%</div>
+        <div class="sub">@(s.SpindleRunning ? "spindle running" : "spindle stopped")</div>
+    </div>
+    <div class="card">
+        <div class="label">Cycle time</div>
+        @if (s.LearnedCycleSeconds is double c)
+        {
+            <div class="big">@c.ToString("0.#")s</div>
+            <div class="sub">max @s.MaxPartsPerHour?.ToString("0")/hr</div>
+        }
+        else
+        {
+            <div class="big">&mdash;</div>
+            <div class="sub">LEARNING (@s.CyclesCollected cycles so far)</div>
+        }
+    </div>
+</div>
+
+<div class="card wide">
+    <div class="label">Tools (current: @(s.CurrentTool?.ToString() ?? "-"))</div>
+    <table class="tools">
+        <tr><th>Tool</th><th>POT</th><th>Status</th><th>Life left</th><th>Grade</th></tr>
+        @foreach (var t in s.Tools)
+        {
+            <tr>
+                <td>@(t.ToolNumber?.ToString() ?? "-") <span class="muted">@t.AssetId</span></td>
+                <td>@(t.Pot?.ToString() ?? "-")</td>
+                <td>@t.Status</td>
+                <td>
+                    @if (t.PercentRemaining is double pct)
+                    {
+                        <span>@pct.ToString("0")%</span>
+                        <span class="lifebar"><span class="fill @t.Grade" style="width:@Math.Clamp(pct, 0, 100).ToString("0")%"></span></span>
+                    }
+                    else
+                    {
+                        <span class="muted">n/a</span>
+                    }
+                </td>
+                <td>
+                    <span class="chip @t.Grade">@(t.Grade == "na" ? "N/A" : t.Grade.ToUpperInvariant())</span>
+                </td>
+            </tr>
+        }
+    </table>
+</div>

@@ -1,0 +1,11 @@
+bin/
+obj/
+*.user
+data/
+*.db
+*.db-journal
+update.log
+*.log
+
+*.xml
+!docs/*.xml

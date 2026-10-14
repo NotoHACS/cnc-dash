@@ -1,0 +1,83 @@
+@page "/dashboard/admin"
+@model CncDash.Server.Pages.Admin.IndexModel
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Admin — CNC Dashboard</title>
+    <link rel="stylesheet" href="/dashboard.css" />
+</head>
+<body>
+<div class="wrap">
+    <div class="topbar">
+        <span class="machine">Admin</span>
+        @if (Model.Message != "")
+        {
+            <span class="msg">@Model.Message</span>
+        }
+        <span class="muted right"><a href="/dashboard">&larr; dashboard</a></span>
+    </div>
+
+    <div class="card wide">
+        <div class="label">Machines</div>
+        <table class="tools">
+            <tr><th>ID</th><th>Display name</th><th>API key</th></tr>
+            @foreach (var m in Model.Machines)
+            {
+                <tr class="@(Model.EditMachineId == m.Id ? "selected" : "")">
+                    <td><a href="?machine=@m.Id">@m.Id</a></td>
+                    <td>@m.DisplayName</td>
+                    <td class="muted mono">@m.ApiKey</td>
+                </tr>
+            }
+        </table>
+        <form method="post" asp-page-handler="AddMachine" class="inline-form">
+            <input asp-for="NewMachineId" placeholder="machine id (e.g. cnc7)" required />
+            <input asp-for="NewMachineName" placeholder="display name (e.g. CNC 7)" />
+            <button type="submit">+ Add machine</button>
+        </form>
+    </div>
+
+    <div class="card wide">
+        <div class="label">Configuration — @Model.EditMachineId</div>
+        <form method="post" asp-page-handler="Save">
+            <input type="hidden" asp-for="EditMachineId" />
+
+            <h3>Shifts (local time; overlaps are allowed; overnight windows wrap)</h3>
+            <table class="tools">
+                <tr><th></th><th>Start</th><th>End</th></tr>
+                <tr>
+                    <td><input type="checkbox" asp-for="Shift1Enabled" /> Shift 1</td>
+                    <td><input type="time" asp-for="Shift1Start" /></td>
+                    <td><input type="time" asp-for="Shift1End" /></td>
+                </tr>
+                <tr>
+                    <td><input type="checkbox" asp-for="Shift2Enabled" /> Shift 2</td>
+                    <td><input type="time" asp-for="Shift2Start" /></td>
+                    <td><input type="time" asp-for="Shift2End" /></td>
+                </tr>
+                <tr>
+                    <td><input type="checkbox" asp-for="Shift3Enabled" /> Shift 3</td>
+                    <td><input type="time" asp-for="Shift3Start" /></td>
+                    <td><input type="time" asp-for="Shift3End" /></td>
+                </tr>
+            </table>
+
+            <h3>Production</h3>
+            <div class="formgrid">
+                <label>Part name <input asp-for="PartName" /></label>
+                <label>Parts per cycle <input type="number" min="1" asp-for="PartsPerCycle" /></label>
+                <label>Expected cycle seconds (seed, 0 = learn only) <input type="number" min="0" step="1" asp-for="ExpectedCycleSeconds" /></label>
+                <label>Green threshold % <input type="number" min="1" max="200" step="1" asp-for="GreenThresholdPercent" /></label>
+                <label>Tool warn threshold % remaining <input type="number" min="0" max="100" step="1" asp-for="WarnThresholdPercent" /></label>
+                <label>Spindle "running" RPM threshold <input type="number" min="0" asp-for="SpindleRunningRpm" /></label>
+                <label>Learning window (cycles) <input type="number" min="3" asp-for="CycleLearningWindow" /></label>
+                <label>Time zone (IANA, e.g. America/New_York) <input asp-for="TimeZone" /></label>
+            </div>
+            <button type="submit">Save</button>
+        </form>
+    </div>
+</div>
+</body>
+</html>

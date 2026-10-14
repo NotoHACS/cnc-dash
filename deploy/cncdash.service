@@ -1,0 +1,18 @@
+[Unit]
+Description=CncDash server (dashboard + ingest API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cncdash
+WorkingDirectory=/opt/cncdash/server
+ExecStart=/usr/bin/dotnet /opt/cncdash/server/CncDash.Server.dll
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5154
+Environment=CNC_DASH_DB=/opt/cncdash/data/cncdash.db
+EnvironmentFile=-/opt/cncdash/secrets.env
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

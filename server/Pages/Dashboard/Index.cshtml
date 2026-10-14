@@ -1,0 +1,27 @@
+@page "/dashboard"
+@model CncDash.Server.Pages.Dashboard.IndexModel
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>@Model.Status.MachineId — CNC Dashboard</title>
+    <link rel="stylesheet" href="/dashboard.css" />
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body>
+<div class="wrap">
+    <div class="topbar">
+        <span class="machine">@Model.Status.DisplayName</span>
+        <span class="part">@Model.Status.PartName</span>
+        <span class="program">@Model.Status.Program</span>
+        <span class="muted">updated @Model.Status.LastSampleUtc?.ToLocalTime().ToString("HH:mm:ss")</span>
+    </div>
+    <div id="live" hx-get="/dashboard/panel?machine=@Model.Status.MachineId"
+         hx-trigger="every 5s" hx-swap="innerHTML">
+        <partial name="_Panel" model="Model.Status" />
+    </div>
+    <div class="footer"><a href="/dashboard/admin">admin</a></div>
+</div>
+</body>
+</html>
