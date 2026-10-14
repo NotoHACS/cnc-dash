@@ -42,6 +42,10 @@ public class MachineConfig
     // continuous seconds; shorter dips (tool changes) keep it "running".
     public int SpindleStopDelaySeconds { get; set; } = 30;
 
+    // Tool number acting as the in-cycle touch probe: probe periods don't rotate
+    // the spindle but count as running (exempt from spindle-down/RED). 0 disables.
+    public int ProbeToolNumber { get; set; } = 1;
+
     public string TimeZone { get; set; } = "America/New_York";
 
     // Expected cycle time in seconds (operator estimate). Used until the server has

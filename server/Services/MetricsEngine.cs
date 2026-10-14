@@ -88,17 +88,42 @@ public class MetricsEngine
             speedRows.Insert(0, lastSpeedBefore);
         }
 
+        // probe exemption config (0 = disabled); tools are >= 1 so comparing
+        // against 0 naturally disables it
+        var probeTool = cfg.ProbeToolNumber;
+
+        // tool timeline for the probe exemption: Mp1CurrentTool rows land as
+        // change events within their ingest batch; the tool is physically
+        // constant between change events, so the active tool for any moment is
+        // the latest change event at/before that moment. Pre-shift baseline is
+        // clamped to the shift start just like the speed baseline.
+        var toolTimeline = new List<(DateTime Ts, int Tool)>();
+        if (lastToolRow?.CurrentTool is int preShiftTool)
+            toolTimeline.Add((shift.StartUtc, preShiftTool));
+        toolTimeline.AddRange(samples
+            .Where(s => s.DataItemId == "Mp1CurrentTool" && s.CurrentTool != null)
+            .Select(s => (s.TsUtc, s.CurrentTool!.Value)));
+        toolTimeline.Sort((a, b) => a.Ts.CompareTo(b.Ts));
+
         // up-intervals: [ts of sample showing "running", stop confirmed after
         // SpindleStopDelaySeconds continuous below threshold) — brief dips
-        // (tool changes) count as running time.
+        // (tool changes) count as running time; probe-active periods (probe
+        // tool in the spindle, no rotation) count as running too.
         var stopDelay = TimeSpan.FromSeconds(Math.Max(0, cfg.SpindleStopDelaySeconds));
 
         double upSeconds = 0;
         DateTime? runFrom = null;
         DateTime? dipFrom = null;
+        int toolPtr = 0;
+        int? ActiveTool(DateTime ts)
+        {
+            while (toolPtr < toolTimeline.Count && toolTimeline[toolPtr].Ts <= ts) toolPtr++;
+            return toolPtr > 0 ? toolTimeline[toolPtr - 1].Tool : (int?)null;
+        }
         foreach (var row in speedRows.OrderBy(r => r.TsUtc))
         {
-            var running = (row.SpindleSpeed ?? 0) >= cfg.SpindleRunningRpm;
+            var toolHere = probeTool > 0 ? ActiveTool(row.TsUtc) : null;
+            var running = (row.SpindleSpeed ?? 0) >= cfg.SpindleRunningRpm || toolHere == probeTool;
             if (running)
             {
                 if (runFrom == null) runFrom = row.TsUtc;
@@ -149,6 +174,12 @@ public class MetricsEngine
                 status.StatusReason = "running (execution state; no speed data)";
             status.SpindleUptimePercent = 0;
         }
+
+        // probe exemption (display): with the probe tool in the spindle the
+        // spindle is "running" regardless of RPM — probe taps don't rotate the
+        // spindle; the status reason/color cascade proceeds normally.
+        if (probeTool > 0 && toolTimeline.Count > 0 && toolTimeline[^1].Tool == probeTool)
+            status.SpindleRunning = true;
         if (lastSpeed.HasValue)
         {
             status.SpindleUptimePercent = status.ShiftElapsedMinutes > 0.5

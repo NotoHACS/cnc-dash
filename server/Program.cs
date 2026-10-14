@@ -51,6 +51,13 @@ using (var scope = app.Services.CreateScope())
             await cmd.ExecuteNonQueryAsync();
             Console.WriteLine("[schema] MachineConfigs.SpindleStopDelaySeconds added (default 30)");
         }
+        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('MachineConfigs') WHERE name = 'ProbeToolNumber'";
+        if (Convert.ToInt32(await cmd.ExecuteScalarAsync()) == 0)
+        {
+            cmd.CommandText = "ALTER TABLE MachineConfigs ADD COLUMN ProbeToolNumber INTEGER NOT NULL DEFAULT 1";
+            await cmd.ExecuteNonQueryAsync();
+            Console.WriteLine("[schema] MachineConfigs.ProbeToolNumber added (default 1)");
+        }
     }
     if (sqconn.State == ConnectionState.Open) await sqconn.CloseAsync();
 
