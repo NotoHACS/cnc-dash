@@ -18,7 +18,10 @@ agent, with an admin-configurable metrics model.
   sequence), metrics engine (shift windows, cycle-time learning, RYG status,
   spindle uptime, tool OK/NG), Razor + htmx dashboard, admin UI.
 - Data item mapping and machine quirks: `docs/dataitems.md`
-- Deployment: `deploy/hermes-prompt.md`, `deploy/cncdash.service`, `deploy/publish.sh`
+- Deployment: server deploy scripts live here (`deploy/publish.sh`,
+  `deploy/cncdash.service`); the LXC/tunnel provisioning note is private
+  (companion repo `cnc-dash-deploy`). Point `ServerUrl` in collector config at
+  your own hostname.
 
 ## URLs
 
