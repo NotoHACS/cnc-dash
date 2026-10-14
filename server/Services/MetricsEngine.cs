@@ -124,6 +124,7 @@ public class MetricsEngine
         }
 
         var lastSpeed = speedRows.LastOrDefault()?.SpindleSpeed;
+        status.LastSpindleSpeed = lastSpeed;
 
         // spindle is "running" while ANY sample inside the stop-delay window is
         // at/above threshold, so a momentary dip (tool change) doesn't flip to stopped
@@ -201,6 +202,12 @@ public class MetricsEngine
 
         status.PartsThisShift = partsThisShift;
         status.CyclesCollected = countRows.Count - (lastCountRow != null ? 1 : 0);
+
+        // elapsed within the cycle in progress = time since the last part-count
+        // change (the collector only posts changed values, so every count row IS
+        // a change); null when there is nothing to anchor to.
+        if (prevCountTs is DateTime lastCountChange)
+            status.CurrentCycleSeconds = Math.Max(0, (nowUtc - lastCountChange).TotalSeconds);
 
         // learned cycle: rolling median of window, blended with seeded expectation
         if (cycleSeconds.Count > 0)

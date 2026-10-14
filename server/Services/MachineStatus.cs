@@ -35,6 +35,10 @@ public class MachineStatus
     public double ExpectedParts { get; set; }
     public double PercentOfExpected { get; set; }
 
+    // Elapsed seconds within the cycle in progress (since the last part-count
+    // change); null when the server has no count-change timestamp to anchor to.
+    public double? CurrentCycleSeconds { get; set; }
+
     // Learning
     public double? LearnedCycleSeconds { get; set; }
     public int CyclesCollected { get; set; }
@@ -43,6 +47,7 @@ public class MachineStatus
     // Spindle
     public double SpindleUptimePercent { get; set; }
     public bool SpindleRunning { get; set; }
+    public double? LastSpindleSpeed { get; set; }
 
     // Tools
     public List<ToolStatus> Tools { get; set; } = new();

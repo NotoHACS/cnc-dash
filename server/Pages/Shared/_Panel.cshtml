@@ -10,6 +10,26 @@
         StatusColor.Learning => "learning",
         _ => "off",
     };
+
+    // Shift-start grace: no red/yellow grading before there is anything to grade
+    // against — nothing made while the expectation itself is still empty, or the
+    // first minutes of a shift. Rendered muted, no colored bar.
+    var grace = (s.PartsThisShift == 0 && s.ExpectedParts == 0) || s.ShiftElapsedMinutes < 15;
+
+    string Mmss(double sec)
+    {
+        var t = TimeSpan.FromSeconds(Math.Max(0, sec));
+        return t.TotalMinutes < 60 ? t.ToString(@"mm\:ss") : t.ToString(@"hh\:mm\:ss");
+    }
+    string RpmSuffix() => s.LastSpindleSpeed is double rpm ? $" · {rpm:0} RPM" : "";
+
+    var orderedTools = s.Tools
+        .Select(t => new { T = t, Rank = t.Grade == "ok" ? 2 : t.Grade == "na" ? 1 : 0 })
+        .OrderBy(x => x.Rank)
+        .ThenBy(x => x.T.ToolNumber ?? int.MaxValue)
+        .ToList();
+    var okCount = orderedTools.Count(x => x.Rank == 2);
+    var okTogglePending = true;
 }
 
 <div class="statusbox @cls">
@@ -20,25 +40,55 @@
 
 <div class="grid">
     <div class="card">
+        <div class="label">Cycle progress</div>
+        @if (s.CurrentCycleSeconds is double cs)
+        {
+            @if (s.LearnedCycleSeconds is double target)
+            {
+                <div class="big">@Mmss(cs) / @Mmss(target)</div>
+                <div class="bar"><div class="fill green" style="width:@(Math.Clamp(cs / target * 100, 0, 100).ToString("0"))%"></div></div>
+                <div class="sub">spindle@(RpmSuffix())</div>
+            }
+            else
+            {
+                <div class="big">in cycle</div>
+                <div class="sub">@Mmss(cs) elapsed@RpmSuffix()</div>
+            }
+        }
+        else
+        {
+            <div class="big">in cycle</div>
+            <div class="sub">no counts yet@RpmSuffix()</div>
+        }
+    </div>
+    <div class="card">
         <div class="label">Parts this shift</div>
         <div class="big">@s.PartsThisShift</div>
         <div class="sub">@s.ExpectedParts expected so far</div>
     </div>
     <div class="card">
-        <div class="label">% of theoretical max</div>
-        <div class="big">@s.PercentOfExpected.ToString("0")%</div>
-        <div class="bar"><div class="fill @cls" style="width:@(Math.Min(100, s.PercentOfExpected).ToString("0"))%"></div></div>
+        <div class="label">% of target</div>
+        @if (grace)
+        {
+            <div class="big muted">on pace</div>
+            <div class="sub">building expectation</div>
+        }
+        else
+        {
+            <div class="big">@s.PercentOfExpected.ToString("0")%</div>
+            <div class="bar"><div class="fill @cls" style="width:@(Math.Min(100, s.PercentOfExpected).ToString("0"))%"></div></div>
+        }
     </div>
     <div class="card">
         <div class="label">Spindle uptime</div>
         <div class="big">@s.SpindleUptimePercent.ToString("0")%</div>
-        <div class="sub">@(s.SpindleRunning ? "spindle running" : "spindle stopped")</div>
+        <div class="sub">@(s.LastSpindleSpeed is double rpm ? $"{rpm:0} RPM · " : "")@(s.SpindleRunning ? "spindle running" : "spindle stopped")</div>
     </div>
     <div class="card">
         <div class="label">Cycle time</div>
         @if (s.LearnedCycleSeconds is double c)
         {
-            <div class="big">@c.ToString("0.#")s</div>
+            <div class="big">@(c >= 120 ? (c / 60.0).ToString("0.0") + "m" : c.ToString("0.#") + "s")</div>
             <div class="sub">max @s.MaxPartsPerHour?.ToString("0")/hr</div>
         }
         else
@@ -51,29 +101,51 @@
 
 <div class="card wide">
     <div class="label">Tools (current: @(s.CurrentTool?.ToString() ?? "-"))</div>
-    <table class="tools">
-        <tr><th>Tool</th><th>POT</th><th>Status</th><th>Life left</th><th>Grade</th></tr>
-        @foreach (var t in s.Tools)
-        {
-            <tr>
-                <td>@(t.ToolNumber?.ToString() ?? "-") <span class="muted">@t.AssetId</span></td>
-                <td>@(t.Pot?.ToString() ?? "-")</td>
-                <td>@t.Status</td>
-                <td>
-                    @if (t.PercentRemaining is double pct)
-                    {
-                        <span>@pct.ToString("0")%</span>
-                        <span class="lifebar"><span class="fill @t.Grade" style="width:@Math.Clamp(pct, 0, 100).ToString("0")%"></span></span>
-                    }
-                    else
-                    {
-                        <span class="muted">n/a</span>
-                    }
-                </td>
-                <td>
-                    <span class="chip @t.Grade">@(t.Grade == "na" ? "N/A" : t.Grade.ToUpperInvariant())</span>
-                </td>
-            </tr>
-        }
-    </table>
+    <div class="tools-scroll">
+        <table class="tools">
+            <tr><th>Tool</th><th>POT</th><th>Status</th><th>Life left</th><th>Grade</th></tr>
+            @foreach (var x in orderedTools)
+            {
+                var t = x.T;
+                if (x.Rank == 2 && okTogglePending)
+                {
+                    okTogglePending = false;
+                    <tr id="oktools" class="oktools" onclick="okToggle()"><td colspan="5"><span class="caret"></span>OK tools (@okCount)</td></tr>
+                }
+                <tr class="@(x.Rank == 2 ? "okrow" : "")">
+                    <td>@(t.ToolNumber?.ToString() ?? "-") <span class="muted">@t.AssetId</span></td>
+                    <td>@(t.Pot?.ToString() ?? "-")</td>
+                    <td>@t.Status</td>
+                    <td>
+                        @if (t.PercentRemaining is double pct)
+                        {
+                            <span>@pct.ToString("0")%</span>
+                            <span class="lifebar"><span class="fill @t.Grade" style="width:@Math.Clamp(pct, 0, 100).ToString("0")%"></span></span>
+                        }
+                        else
+                        {
+                            <span class="muted">n/a</span>
+                        }
+                    </td>
+                    <td>
+                        <span class="chip @t.Grade">@(t.Grade == "na" ? "N/A" : t.Grade.ToUpperInvariant())</span>
+                    </td>
+                </tr>
+            }
+        </table>
+    </div>
 </div>
+
+<script>
+    var okOpen = typeof okOpen === "boolean" ? okOpen : false;
+    function applyOk() {
+        var row = document.getElementById("oktools");
+        if (row) row.classList.toggle("open", okOpen);
+        document.querySelectorAll(".okrow").forEach(function (r) { r.hidden = !okOpen; });
+    }
+    function okToggle() {
+        okOpen = !okOpen;
+        applyOk();
+    }
+    applyOk();
+</script>

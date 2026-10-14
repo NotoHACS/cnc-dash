@@ -41,19 +41,26 @@
     }
     else
     {
-        <div class="topbar">
-            <span class="machine">@Model.Status!.DisplayName</span>
-            <span class="part">@Model.Status.PartName</span>
-            <span class="program">@Model.Status.Program</span>
-            <span class="muted">updated @Model.Status.LastSampleUtc?.ToLocalTime().ToString("HH:mm:ss")</span>
+        var st = Model.Status!;
+        var col = st.Color.ToString().ToLowerInvariant();
+        var age = st.LastSampleUtc is null
+            ? double.MaxValue
+            : (DateTime.UtcNow - st.LastSampleUtc.Value).TotalSeconds;
+        var updCls = age > 120 ? "old" : age > 30 ? "stale" : "";
+        <div class="topbar dot-@col">
+            <span class="dot"></span>
+            <span class="machine">@st.DisplayName</span>
+            <span class="pill">@st.PartName</span>
+            <span class="pill">@(st.Program ?? "-")</span>
+            <span class="updated @updCls">updated @st.LastSampleUtc?.ToLocalTime().ToString("HH:mm:ss")</span>
+            <span class="navlinks">
+                <a href="/dashboard" class="muted">&larr; all machines</a>
+                <a href="/dashboard/admin/@Uri.EscapeDataString(st.MachineId)">admin</a>
+            </span>
         </div>
         <div id="live" hx-get="/dashboard/panel/@Uri.EscapeDataString(Model.Status.MachineId)"
              hx-trigger="every 5s" hx-swap="innerHTML">
             <partial name="_Panel" model="Model.Status" />
-        </div>
-        <div class="footer">
-            <a href="/dashboard">&larr; all machines</a> |
-            <a href="/dashboard/admin/@Uri.EscapeDataString(Model.Status.MachineId)">admin</a>
         </div>
     }
 </div>
