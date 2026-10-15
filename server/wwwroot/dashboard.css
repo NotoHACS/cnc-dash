@@ -51,6 +51,17 @@ a { color: #58a6ff; text-decoration: none; }
 .sbpallet .sbpill-label { color: #8fe6ae; opacity: .8; font-size: 11px; }
 .sbpallet .sbpill-value { color: #8fe6ae; font-size: 20px; font-weight: 700; }
 
+/* ntfy alarm bar: full-width strip above the cards; red = alarm (p4), amber = warning (p1-2) */
+.alarmbar {
+    display: flex; align-items: center; gap: 10px;
+    margin: 0 0 14px 0; padding: 10px 16px; border-radius: 8px;
+    font-size: 14px; line-height: 1.3;
+}
+.alarmbar.red { background: #3d1216; border: 1px solid #f8514980; color: #ff8f88; }
+.alarmbar.amber { background: #38290f; border: 1px solid #d2992280; color: #e3b341; }
+.alarmbar .ab-title { font-weight: 700; }
+.alarmbar .ab-msg { opacity: .8; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* cycle progress: text column left, big horizontal gauge right */
 .cyclecard { padding: 16px 20px; margin-bottom: 14px; display: flex; gap: 20px; align-items: center; }
 .cyclecard .cc-left { min-width: 190px; text-align: left; }

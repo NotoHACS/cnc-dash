@@ -120,6 +120,77 @@
     </div>
 </div>
 
+<div id="alarmbar"></div>
+@* ntfy alarm bar: JS below polls the ntfy topic (alarm poller pushes here).
+   Red = active alarm (p4), amber = warning/info (p1-2), auto-expires. *@
+<script>
+(function () {
+    var TOPIC_URL = "https://ntfy.fehustn.cc/cnc12/json?poll=1";
+    var STALE_SECS = 900;      // p2 info without CLEARED auto-hides after 15min
+    var seen = {};             // id -> handled (dedupe)
+    var state = {};            // key -> {title, msg, prio, ts, cleared}
+
+    function render() {
+        var bar = document.getElementById("alarmbar");
+        if (!bar) return;
+        var now = Date.now() / 1000;
+        var active = [];
+        for (var k in state) {
+            var a = state[k];
+            if (a.cleared) { continue; }
+            if (a.prio <= 2 && now - a.ts > STALE_SECS) { continue; }
+            active.push(a);
+        }
+        active.sort(function (a, b) { return b.prio - a.prio; }); // worst first
+        if (active.length === 0) { bar.innerHTML = ""; bar.style.display = "none"; return; }
+        bar.style.display = "";
+        var html = "";
+        active.forEach(function (a) {
+            var cls = a.prio >= 4 ? "alarmbar red" : "alarmbar amber";
+            html += '<div class="' + cls + '" title="' + (a.msg || "").replace(/"/g, "&quot;") + '">' +
+                '<span class="ab-title">' + a.title + '</span>' +
+                (a.msg && a.msg !== a.title ? '<span class="ab-msg">' + a.msg.split("\n")[0] + '</span>' : '') +
+                '</div>';
+        });
+        bar.innerHTML = html;
+    }
+
+    function poll() {
+        fetch(TOPIC_URL, { cache: "no-store" }).then(function (r) { return r.text(); }).then(function (t) {
+            t.split("\n").forEach(function (line) {
+                if (!line.startsWith("{")) return;
+                try {
+                    var m = JSON.parse(line);
+                    if (m.event !== "message" || m.topic !== "cnc12" || seen[m.id]) return;
+                    seen[m.id] = 1;
+                    var title = m.title || "";
+                    var msg = m.message || "";
+                    var key, base;
+                    var cm = title.match(/^\[CLEARED\]\s*(.+)$/);
+                    if (cm) {
+                        key = cm[1].trim();           // cleared: key by cleared title text
+                        // match with any earlier alarm whose title CONTAINS the key
+                        for (var k in state) {
+                            if (k.indexOf(key) >= 0 || state[k].title.indexOf(key) >= 0) {
+                                state[k].cleared = true;
+                            }
+                        }
+                        state["clr:" + key] = { title: title, msg: msg, prio: 3, ts: m.time, cleared: true };
+                        return;
+                    } else {
+                        key = (title || msg).split("\n")[0].trim();
+                        state[key] = { title: title || msg, msg: msg, prio: m.priority || 3, ts: m.time, cleared: false };
+                    }
+                } catch (e) { /* not json */ }
+            });
+            render();
+        }).catch(function () { });
+    }
+    poll();
+    setInterval(poll, 10000);
+})();
+</script>
+
     <div class="card wide">
     <div class="label">Tools</div>
     <div class="tools-scroll">
