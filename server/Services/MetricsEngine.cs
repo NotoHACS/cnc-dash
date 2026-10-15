@@ -372,7 +372,7 @@ public class MetricsEngine
             status.PartsSource = "manual seed";
         }
         status.PartsThisShift = partsNow;
-        status.CyclesCollected = flagPulses;
+        status.CyclesCollected = (int)Math.Min(flagPulses, int.MaxValue);
 
         // stations on (VC40 via StationsOn) for the dashboard when enabled
         status.StationsOn = cfg.StationsVarIndex > 0
