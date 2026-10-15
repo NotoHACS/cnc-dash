@@ -121,6 +121,7 @@ public class AssetClient
 
         return row;
     }
+}
 
 public class ToolRow
 {
