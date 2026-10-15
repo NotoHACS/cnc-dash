@@ -58,7 +58,8 @@ public class MachineConfig
     public int? PartsThisShiftOverride { get; set; }
 
     // Common-variable indices for parts/stations (0 = feature off). The collector
-    // extracts VC40 → StationsOn and VC41 → PartsTally.
+    // extracts VC40 → StationsOn and VC41 → PartsTally: a PER-SHIFT tally the
+    // machine's app resets, whose value IS the parts count (no diffing).
     public int PartsTallyVarIndex { get; set; } = 41;
     public int StationsVarIndex { get; set; } = 40;
 
