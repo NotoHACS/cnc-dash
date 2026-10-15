@@ -62,5 +62,9 @@ public class MachineConfig
     public int PartsTallyVarIndex { get; set; } = 41;
     public int StationsVarIndex { get; set; } = 40;
 
+    // Common var for the displayed part name (e.g. VC65 job number; 0 = off, →
+    // PartName). Falls back to PartName when the var is absent from the map.
+    public int PartNameVarIndex { get; set; } = 65;
+
     public Machine? Machine { get; set; }
 }

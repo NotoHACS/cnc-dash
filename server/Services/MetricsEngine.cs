@@ -382,6 +382,16 @@ public class MetricsEngine
             ? samples.LastOrDefault(s => s.StationsOn != null)?.StationsOn
             : null;
 
+        // part name from a common var (e.g. VC65 job number): when configured and
+        // present in the latest map, override the displayed PartName; PartNameFromVar
+        // stays null when the var is off/absent so the API consumer can tell provenance
+        if (cfg.PartNameVarIndex > 0)
+        {
+            status.PartNameFromVar = CommonVarValue(samples, cfg.PartNameVarIndex);
+            if (!string.IsNullOrEmpty(status.PartNameFromVar))
+                status.PartName = status.PartNameFromVar;
+        }
+
         // cycle progress anchor: cutting time at the last cycle start (latest 0->1
         // pulse or a program-line wrap, whichever is later) — elapsed-in-cycle is
         // cutting seconds, which excludes probe pauses. Mp1line dropping = restart.
@@ -538,4 +548,21 @@ public class MetricsEngine
         "MY1actm" => row.YAct ?? 0,
         _ => row.ZAct ?? 0,
     };
+
+    // lookup a single common var value from the latest parsed map ("65=5600;...")
+    private static string? CommonVarValue(List<Sample> samples, int varIndex)
+    {
+        var row = samples.LastOrDefault(s => s.DataItemId == "Mp1CommonVariable" && s.CommonVars != null);
+        if (row?.CommonVars is not string map) return null;
+        var prefix = varIndex.ToString() + "=";
+        foreach (var part in map.Split(';'))
+        {
+            if (part.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                var v = part[prefix.Length..].Trim();
+                return v.Length > 0 ? v : null;
+            }
+        }
+        return null;
+    }
 }

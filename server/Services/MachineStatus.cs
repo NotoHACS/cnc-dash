@@ -42,6 +42,10 @@ public class MachineStatus
     // stations on (common var VC40) when StationsVarIndex > 0 and data exists
     public int? StationsOn { get; set; }
 
+    // part name resolved from the PartNameVarIndex common var (null = var off or
+    // absent from the map; PartName then keeps its configured value)
+    public string? PartNameFromVar { get; set; }
+
     // Elapsed seconds within the cycle in progress (since the last part-count
     // change); null when the server has no count-change timestamp to anchor to.
     public double? CurrentCycleSeconds { get; set; }
