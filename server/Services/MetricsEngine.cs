@@ -307,13 +307,28 @@ public class MetricsEngine
         // value and parts follow it). parts = current tally when data exists.
         long tallyParts = 0;
         var haveTally = false;
+        DateTime? tallyStepTs = null; // last in-shift tally INCREASE (cycle anchor)
         if (cfg.PartsTallyVarIndex > 0)
         {
-            var lastTallySample = samples.LastOrDefault(s => s.DataItemId == "Mp1CommonVariable" && s.PartsTally != null);
+            var tallyRows = samples
+                .Where(s => s.DataItemId == "Mp1CommonVariable" && s.PartsTally != null)
+                .OrderBy(r => r.TsUtc).ToList();
+            var lastTallySample = tallyRows.LastOrDefault();
             if (lastTallySample?.PartsTally is double tallyVal)
             {
                 tallyParts = (long)Math.Max(0, Math.Round(tallyVal));
                 haveTally = true;
+            }
+            // latest increase: any row whose tally exceeds the max seen before it
+            long maxSoFar = -1;
+            foreach (var r in tallyRows)
+            {
+                var v = (long)Math.Max(0, Math.Round(r.PartsTally!.Value));
+                if (v > maxSoFar)
+                {
+                    if (maxSoFar >= 0) tallyStepTs = r.TsUtc; // a real increase, not the first reading
+                    maxSoFar = v;
+                }
             }
         }
 
@@ -360,24 +375,31 @@ public class MetricsEngine
             : null;
         status.QuotaParts = cfg.QuotaParts;
 
-        // cycle progress anchor: cutting time at the last cycle start. The anchor
-        // is the latest 0->1 Mppartcount pulse — that is the machine's own
-        // cycle-complete flag and the only trustworthy restart marker. Mp1line
-        // must NEVER be used for this: Okuma subprograms bounce the line number
-        // constantly mid-cycle (main 1050 calling sub 1..N, and call/return drops
-        // like 155->4), and treating any decrease as a restart dragged the anchor
-        // seconds into the past over and over — progress visibly reset mid-cycle.
-        // Cutting time interpolated at the pulse timestamp: tcut = c0 + (c1-c0) *
-        // (pulse - t0)/(t1 - t0) between the surrounding cutting-time rows. The
-        // pulse lags true cycle start (fires at cycle END), so the elapsed-in-cycle
-        // value reads low by up to one learned cycle — bounded and stable beats
-        // exact-but-resetting.
+        // cycle progress anchor: cutting time at the last cycle start. Anchor
+        // priority, validated against cnc12 field data (Oct 2026):
+        //   1. TALLY INCREASE (PartsTally went up) — a part landed, the batch
+        //      boundary. 24 clean steps/day spaced ~32min, can't lie.
+        //   2. Mppartcount 0->1 pulse (machines without a tally var).
+        //   3. Shift start.
+        // Mp1line must NEVER be used for this: Okuma subprograms bounce the line
+        // number constantly mid-cycle (main 1050 calling sub 1..N, call/return
+        // drops like 155->4), and any-decrease-as-restart dragged the anchor
+        // seconds into the past repeatedly — progress visibly reset mid-cycle.
+        // VC70 was also rejected: it flickers 0/2/0 at resets and fires at odd
+        // offsets, reads like a machining-loop counter, not a cycle flag.
+        // Cutting time interpolated at the anchor timestamp: tcut = c0 + (c1-c0)
+        // * (a - t0)/(t1 - t0) between surrounding rows. The anchor fires at
+        // cycle END, so elapsed reads low by up to one learned cycle — bounded
+        // and stable beats exact-but-resetting.
         double? cycleStartCut = null;
         if (tcutRows.Count > 0)
         {
-            if (pulseTss.Count > 0)
+            DateTime? anchorTs = tallyStepTs; // latest tally increase in-shift
+            if (anchorTs == null && pulseTss.Count > 0)
+                anchorTs = pulseTss[^1];
+            if (anchorTs != null)
             {
-                var pulseTs = pulseTss[^1];
+                var at = anchorTs.Value;
                 var first = tcutRows[0];
                 var t0 = first.TsUtc;
                 var c0 = first.TotalCuttingTime ?? 0;
@@ -385,20 +407,22 @@ public class MetricsEngine
                 var c1 = c0;
                 foreach (var r in tcutRows)
                 {
-                    if (r.TsUtc <= pulseTs) { t0 = r.TsUtc; c0 = r.TotalCuttingTime!.Value; }
+                    if (r.TsUtc <= at) { t0 = r.TsUtc; c0 = r.TotalCuttingTime!.Value; }
                     else { t1 = r.TsUtc; c1 = r.TotalCuttingTime!.Value; break; }
                 }
                 var span = (t1 - t0).TotalSeconds;
                 cycleStartCut = span > 0
-                    ? c0 + (c1 - c0) * (pulseTs - t0).TotalSeconds / span
+                    ? c0 + (c1 - c0) * (at - t0).TotalSeconds / span
                     : c0;
             }
             else
-                cycleStartCut = tcutShiftStart; // no pulse yet this shift: assume shift start
+                cycleStartCut = tcutShiftStart; // nothing yet this shift: assume shift start
         }
         var tcutLatest = tcutRows.LastOrDefault()?.TotalCuttingTime;
         if (tcutLatest != null && cycleStartCut != null)
             status.CurrentCycleSeconds = Math.Max(0, tcutLatest.Value - cycleStartCut.Value);
+        else if (tallyStepTs != null)
+            status.CurrentCycleSeconds = Math.Max(0, (nowUtc - tallyStepTs.Value).TotalSeconds);
         else if (pulseTss.Count > 0)
             status.CurrentCycleSeconds = Math.Max(0, (nowUtc - pulseTss[^1]).TotalSeconds);
         // else: leave null → view renders plain "in cycle" (nothing to anchor to)
