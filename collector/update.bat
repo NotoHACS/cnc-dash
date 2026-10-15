@@ -11,3 +11,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0update_helper.ps1" -Re
 echo.
 echo Update finished (see update.log for detail). Press any key to close.
 pause >nul
+(goto) 2>nul & move /y "%~dp0update.bat.new" "%~f0" >nul 2>&1

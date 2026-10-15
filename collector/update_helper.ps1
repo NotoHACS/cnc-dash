@@ -49,6 +49,48 @@ function ServiceRunning {
     return $svc -and $svc.Status -eq "Running"
 }
 
+# The collector exe holds itself open while running (service or console);
+# copying over a running exe always fails. Wait up to 10s for exit, then
+# force-kill: safe — the service was already stopped (NSSM does not auto-restart).
+function Wait-CollectorExit {
+    for ($i = 0; $i -lt 20; $i++) {
+        if (-not (Get-Process -Name "collector" -ErrorAction SilentlyContinue)) { return $true }
+        Start-Sleep -Milliseconds 500
+    }
+    Log "WARNING: collector still running after stop; force-killing"
+    Get-Process -Name "collector" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    return (-not (Get-Process -Name "collector" -ErrorAction SilentlyContinue))
+}
+
+function Copy-WithRetry($src, $dst) {
+    for ($i = 0; $i -lt 3; $i++) {
+        try { Copy-Item $src $dst -Force; return $true }
+        catch {
+            if ($i -eq 2) { return $false }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    return $false
+}
+
+# copy → rename-over → (update.bat only) staged fallback, never fatal on the bat
+function Swap-File($stageDir, $name) {
+    $newFile = Join-Path $stageDir $name
+    if (-not (Test-Path $newFile)) { return $true }
+    $dst = Join-Path $ExeDir $name
+    if (Copy-WithRetry $newFile $dst) { return $true }
+    try { Move-Item -Path $newFile -Destination $dst -Force; return $true } catch {}
+    if ($name -ieq "update.bat") {
+        try {
+            Copy-Item $newFile (Join-Path $ExeDir "update.bat.new") -Force
+            Log "update.bat locked by cmd.exe; staged update.bat.new (consumed next run)"
+            return $true
+        } catch { return $false }
+    }
+    return $false
+}
+
 Log "=== update run ==="
 Log "repo=$Repo service=$ServiceName"
 
@@ -101,24 +143,25 @@ try {
     $hadBackup = $false
     if (Stop-ServiceSafe) {
         $hadBackup = $true
+        if (-not (Wait-CollectorExit)) { throw "collector process would not exit" }
         foreach ($f in $files) {
             New-Item -ItemType Directory -Path $backup -Force | Out-Null
-            Copy-Item $f.FullName (Join-Path $backup $f.Name) -Force
+            if (-not (Copy-WithRetry $f.FullName (Join-Path $backup $f.Name))) { throw "backup copy failed: $($f.Name)" }
         }
         foreach ($f in $files) {
-            $newFile = Join-Path $stage $f.Name
-            if (Test-Path $newFile) { Copy-Item $newFile $f.FullName -Force }
-        }
-        # staged files that are new (not yet on disk)
-        foreach ($nf in Get-ChildItem $stage -File) {
-            if (-not (Test-Path (Join-Path $ExeDir $nf.Name))) { Copy-Item $nf.FullName (Join-Path $ExeDir $nf.Name) }
+            if (-not (Swap-File $stage $f.Name)) { throw "copy failed: $($f.Name)" }
         }
         Start-ServiceSafe
         Start-Sleep -Seconds 5
         if (-not (ServiceRunning)) { throw "service $ServiceName failed to start after update" }
     } else {
-        # running as a plain folder (dev install): just swap files
-        foreach ($nf in Get-ChildItem $stage -File) { Copy-Item $nf.FullName (Join-Path $ExeDir $nf.Name) -Force }
+        # no service: the collector is likely running manually in a console —
+        # waiting for / forcing exit is required or the exe swap fails
+        if (-not (Wait-CollectorExit)) { throw "collector process would not exit (close the collector console and retry)" }
+        foreach ($nf in Get-ChildItem $stage -File) {
+            if (-not (Swap-File $stage $nf.Name)) { throw "copy failed: $($nf.Name)" }
+        }
+        Log "no service installed; start the collector manually now"
     }
 
     Set-Content -Path $VersionFile -Value $tag
@@ -128,7 +171,10 @@ try {
     if ($hadBackup) {
         Log "rolling back..."
         Stop-ServiceSafe | Out-Null
-        foreach ($f in Get-ChildItem $backup -File) { Copy-Item $f.FullName (Join-Path $ExeDir $f.Name) -Force }
+        Wait-CollectorExit | Out-Null
+        foreach ($f in Get-ChildItem $backup -File) {
+            try { Copy-Item $f.FullName (Join-Path $ExeDir $f.Name) -Force } catch { Log "WARNING: rollback copy failed: $($f.Name) - $($_.Exception.Message)" }
+        }
         Start-ServiceSafe
         Log "rollback complete"
     }
