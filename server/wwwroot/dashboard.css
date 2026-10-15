@@ -47,6 +47,9 @@ a { color: #58a6ff; text-decoration: none; }
 .sbrpm { background: #2d1f47; border: 1px solid #a875ff66; }
 .sbrpm .sbpill-label { color: #c9b3ff; opacity: .8; font-size: 11px; }
 .sbrpm .sbpill-value { color: #c9b3ff; font-size: 20px; font-weight: 700; }
+.sbpallet { background: #14331f; border: 1px solid #57d98a66; }
+.sbpallet .sbpill-label { color: #8fe6ae; opacity: .8; font-size: 11px; }
+.sbpallet .sbpill-value { color: #8fe6ae; font-size: 20px; font-weight: 700; }
 
 /* cycle progress: text column left, big horizontal gauge right */
 .cyclecard { padding: 16px 20px; margin-bottom: 14px; display: flex; gap: 20px; align-items: center; }

@@ -31,6 +31,9 @@ public class MachineStatus
     public string PartName { get; set; } = "";
     public string? Program { get; set; }
     public int? CurrentTool { get; set; }
+
+    // active pallet (cycle var value, e.g. VC3 on cnc12: 1 or 2, brief 0 mid-swap)
+    public long? Pallet { get; set; }
     public long PartsThisShift { get; set; }
     public double ExpectedParts { get; set; }
     public double PercentOfExpected { get; set; }

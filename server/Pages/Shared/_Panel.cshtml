@@ -112,6 +112,13 @@
                 <div class="sbpill-label">RPM</div>
                 <div class="sbpill-value">@(s.LastSpindleSpeed is double rpm ? rpm.ToString("0") : "—")</div>
             </div>
+            @if (s.Pallet is long pallet)
+            {
+                <div class="sbpill sbpallet">
+                    <div class="sbpill-label">Pallet</div>
+                    <div class="sbpill-value">@pallet</div>
+                </div>
+            }
         </div>
     </div>
 </div>

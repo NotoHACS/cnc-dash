@@ -490,6 +490,19 @@ public class MetricsEngine
                              ?? lastToolRow?.CurrentTool;
         status.Program = samples.LastOrDefault(s => s.Program != null)?.Program;
 
+        // pallet display: latest value of the cycle var (1/2; brief 0 during swap
+        // renders as the dash via null)
+        if (cfg.CycleVarIndex > 0)
+        {
+            var cvPrefix = cfg.CycleVarIndex.ToString() + "=";
+            var lastCvRow = samples.LastOrDefault(s => s.DataItemId == "Mp1CommonVariable" && s.CommonVars != null);
+            if (lastCvRow?.CommonVars is string cvs)
+            {
+                var pv = CommonVarValueLong(cvs, cvPrefix);
+                status.Pallet = pv is > 0 ? pv : null;
+            }
+        }
+
         status.Tools = await GetToolsAsync(db, machine.Id, cfg);
         status.ExpiredTools = status.Tools.Count(t => t.Grade == "ng");
         return status;
