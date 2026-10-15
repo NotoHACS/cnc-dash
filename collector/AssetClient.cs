@@ -100,7 +100,7 @@ public class AssetClient
             }
         }
 
-        return new ToolRow
+        var row = new ToolRow
         {
             assetId = assetId,
             serial = serial,
@@ -114,8 +114,13 @@ public class AssetClient
             status = status,
             ts = DateTime.UtcNow,
         };
+
+        // raw tool-life provenance for field triage (used/set semantics depend
+        // on exactly these attributes)
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [debug] tool {assetId}: type={lifeType ?? "-"} dir={dir ?? "-"} initial={initial?.ToString() ?? "-"} value={value?.ToString() ?? "-"}");
+
+        return row;
     }
-}
 
 public class ToolRow
 {

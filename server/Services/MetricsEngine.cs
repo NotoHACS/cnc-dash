@@ -446,11 +446,15 @@ public class MetricsEngine
 
         return tools.Select(t =>
         {
+            // CountDirection may vary in case across agents — compare
+            // case-insensitively everywhere
+            var dirUp = string.Equals(t.CountDirection, "UP", StringComparison.OrdinalIgnoreCase);
+
             double? pct = null;
             var grade = "na";
             if (t.LifeInitial is > 0 && t.LifeValue.HasValue)
             {
-                pct = t.CountDirection == "UP"
+                pct = dirUp
                     ? (t.LifeInitial.Value - t.LifeValue.Value) / t.LifeInitial.Value * 100
                     : t.LifeValue.Value / t.LifeInitial.Value * 100;
                 grade = pct < 0 || IsExpiredStatus(t.Status) ? "ng"
@@ -467,7 +471,7 @@ public class MetricsEngine
             var lt = (t.LifeType ?? "").ToUpperInvariant();
             if (t.LifeValue.HasValue && lt is "PARTS" or "PART_COUNT")
             {
-                if (t.CountDirection == "UP")
+                if (dirUp)
                 {
                     if (t.LifeInitial is > 0)
                         cyclesLeft = Math.Max(0, t.LifeInitial.Value - t.LifeValue.Value);
@@ -478,12 +482,13 @@ public class MetricsEngine
 
             // "used/set" per MTConnect ToolLife semantics when the life is count
             // based and the initial budget is known: UP counts up to initial
-            // (used = value); DOWN counts down to 0 (used = initial - value).
-            // Set = LifeInitial. Missing budget or percent-type life → null.
+            // (used = value); DOWN counts down to 0 (used = initial - value,
+            // clamped at 0 so a fresh DOWN tool reads used = 0). Set = LifeInitial.
+            // Missing budget or percent-type life → null.
             string? lifeUsedSet = null;
             if (t.LifeValue.HasValue && t.LifeInitial is > 0 && lt is "PARTS" or "PART_COUNT")
             {
-                var used = t.CountDirection == "UP"
+                var used = dirUp
                     ? t.LifeValue.Value
                     : Math.Max(0, t.LifeInitial.Value - t.LifeValue.Value);
                 lifeUsedSet = $"{used:0}/{t.LifeInitial.Value:0}";
