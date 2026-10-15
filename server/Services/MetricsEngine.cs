@@ -375,26 +375,46 @@ public class MetricsEngine
             : null;
         status.QuotaParts = cfg.QuotaParts;
 
+        // cycle anchor var (cnc12: VC3 = pallet/table id 1<->2, brief 0 during
+        // the swap). A value CHANGE marks the batch boundary — the machine's own
+        // truth, riding in the CommonVars map we already store. 0 = disabled.
+        DateTime? cycleVarChangeTs = null;
+        if (cfg.CycleVarIndex > 0)
+        {
+            var prefix = cfg.CycleVarIndex.ToString() + "=";
+            long? prevCycleVar = null;
+            foreach (var r in samples.Where(s => s.DataItemId == "Mp1CommonVariable" && s.CommonVars != null)
+                         .OrderBy(r => r.TsUtc))
+            {
+                var v = CommonVarValueLong(r.CommonVars!, prefix);
+                if (v.HasValue)
+                {
+                    if (prevCycleVar.HasValue && v.Value != prevCycleVar.Value)
+                        cycleVarChangeTs = r.TsUtc;
+                    prevCycleVar = v.Value;
+                }
+            }
+        }
+
         // cycle progress anchor: cutting time at the last cycle start. Anchor
-        // priority, validated against cnc12 field data (Oct 2026):
-        //   1. TALLY INCREASE (PartsTally went up) — a part landed, the batch
-        //      boundary. 24 clean steps/day spaced ~32min, can't lie.
-        //   2. Mppartcount 0->1 pulse (machines without a tally var).
-        //   3. Shift start.
+        // priority (cnc12: the pallet-swap var VC3 1<->2 IS the cycle boundary —
+        // the machine's own truth, no heuristics):
+        //   1. Cycle-var change (CycleVarIndex, e.g. VC3)
+        //   2. Tally increase (machines without a cycle var)
+        //   3. Mppartcount 0->1 pulse (no tally var either)
+        //   4. Shift start
         // Mp1line must NEVER be used for this: Okuma subprograms bounce the line
         // number constantly mid-cycle (main 1050 calling sub 1..N, call/return
         // drops like 155->4), and any-decrease-as-restart dragged the anchor
         // seconds into the past repeatedly — progress visibly reset mid-cycle.
-        // VC70 was also rejected: it flickers 0/2/0 at resets and fires at odd
-        // offsets, reads like a machining-loop counter, not a cycle flag.
+        // VC70 was also rejected: flickers 0/2/0 at resets, fires at odd offsets.
         // Cutting time interpolated at the anchor timestamp: tcut = c0 + (c1-c0)
-        // * (a - t0)/(t1 - t0) between surrounding rows. The anchor fires at
-        // cycle END, so elapsed reads low by up to one learned cycle — bounded
-        // and stable beats exact-but-resetting.
+        // * (a - t0)/(t1 - t0) between surrounding rows.
         double? cycleStartCut = null;
         if (tcutRows.Count > 0)
         {
-            DateTime? anchorTs = tallyStepTs; // latest tally increase in-shift
+            DateTime? anchorTs = cycleVarChangeTs;
+            if (anchorTs == null) anchorTs = tallyStepTs;
             if (anchorTs == null && pulseTss.Count > 0)
                 anchorTs = pulseTss[^1];
             if (anchorTs != null)
@@ -421,6 +441,8 @@ public class MetricsEngine
         var tcutLatest = tcutRows.LastOrDefault()?.TotalCuttingTime;
         if (tcutLatest != null && cycleStartCut != null)
             status.CurrentCycleSeconds = Math.Max(0, tcutLatest.Value - cycleStartCut.Value);
+        else if (cycleVarChangeTs != null)
+            status.CurrentCycleSeconds = Math.Max(0, (nowUtc - cycleVarChangeTs.Value).TotalSeconds);
         else if (tallyStepTs != null)
             status.CurrentCycleSeconds = Math.Max(0, (nowUtc - tallyStepTs.Value).TotalSeconds);
         else if (pulseTss.Count > 0)
@@ -572,6 +594,20 @@ public class MetricsEngine
         "MY1actm" => row.YAct ?? 0,
         _ => row.ZAct ?? 0,
     };
+
+    // parse one var from a single CommonVars map string as a long (null = absent)
+    private static long? CommonVarValueLong(string map, string prefix)
+    {
+        foreach (var part in map.Split(';'))
+        {
+            if (part.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                var v = part[prefix.Length..].Trim();
+                return long.TryParse(v, out var n) ? n : null;
+            }
+        }
+        return null;
+    }
 
     // lookup a single common var value from the latest parsed map ("65=5600;...")
     private static string? CommonVarValue(List<Sample> samples, int varIndex)

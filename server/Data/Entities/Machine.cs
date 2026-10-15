@@ -46,6 +46,10 @@ public class MachineConfig
     // the spindle but count as running (exempt from spindle-down/RED). 0 disables.
     public int ProbeToolNumber { get; set; } = 1;
 
+    // Okuma common var that flips when the pallet/table swaps (cnc12: VC3,
+    // 1<->2 with a brief 0 during the swap). Cycle anchor source; 0 = disabled.
+    public int CycleVarIndex { get; set; } = 0;
+
     public string TimeZone { get; set; } = "America/New_York";
 
     // Expected cycle time in seconds (operator estimate). Used until the server has
