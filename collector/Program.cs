@@ -5,13 +5,18 @@ public static class Program
 {
     private const string Version = "0.1.0";
 
+    // CI publishes version.txt next to the exe (release tag, e.g. 'v0.8.0');
+    // falls back to the const in dev runs / when the file is missing
+    private static string displayVersion = Version;
+
     public static async Task<int> Main(string[] args)
     {
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         var exeDir = AppContext.BaseDirectory;
         var cfg = CollectorConfig.Load(exeDir);
+        displayVersion = LoadVersion(exeDir);
 
-        Console.WriteLine($"CncDash collector v{Version}");
+        Console.WriteLine($"CncDash collector v{displayVersion}");
         Console.WriteLine($"  agent:  {cfg.AgentUrl}/{cfg.DevicePath}/current");
         Console.WriteLine($"  server: {cfg.ServerUrl} (machine {cfg.MachineId})");
 
@@ -62,7 +67,7 @@ public static class Program
                         {
                             samples = poll.Samples,
                             tools = new List<ToolRow>(),
-                            collectorVersion = Version,
+                            collectorVersion = displayVersion,
                         });
 
                         if (poll.AssetChangedTrigger)
@@ -108,7 +113,7 @@ public static class Program
                         {
                             samples = new List<SampleRow>(),
                             tools = pendingTools,
-                            collectorVersion = Version,
+                            collectorVersion = displayVersion,
                         });
                         pendingTools = new List<ToolRow>();
                     }
@@ -139,6 +144,25 @@ public static class Program
         SaveState(statePath, lastValues);
         Console.WriteLine("shutdown");
         return 0;
+    }
+
+    private static string LoadVersion(string exeDir)
+    {
+        try
+        {
+            var f = Path.Combine(exeDir, "version.txt");
+            if (File.Exists(f))
+            {
+                var v = File.ReadAllText(f).Trim();
+                if (v.Length > 0)
+                {
+                    if (v.StartsWith("v", StringComparison.OrdinalIgnoreCase)) v = v[1..]; // avoid double-v in the banner
+                    return v.Length > 0 ? v : Version;
+                }
+            }
+        }
+        catch { /* unreadable file → const fallback */ }
+        return Version;
     }
 
     private static Dictionary<string, string> LoadState(string path)
