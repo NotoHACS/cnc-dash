@@ -8,7 +8,13 @@ namespace CncDash.Collector;
 public class MtConnectClient
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = false };
-    private static readonly XNamespace Ns = "urn:mtconnect.org:MTConnectStreams:1.4";
+
+    // streams namespace: agents differ per build/version — cnc12 speaks 1.4,
+    // CNC13's old agent is 1.3. Resolve from the RESPONSE root, not a const:
+    // a hardcoded 1.4 ns made every Header lookup miss on 1.3 agents (no
+    // nextSequence -> infinite "seeding from /current" loop).
+    private static XNamespace StreamsNs(XDocument doc) =>
+        doc.Root?.Name.Namespace ?? XNamespace.None;
 
     private readonly HttpClient http;
     private readonly CollectorConfig cfg;
@@ -83,7 +89,13 @@ public class MtConnectClient
         ulong.TryParse(prevInstStr, out var prevInst);
         ulong firstSeq = 0, nextSeq = 0;
         string? instAttr = null;
-        var header = doc.Root?.Element(Ns + "Header");
+        var header = doc.Root?.Element(StreamsNs(doc) + "Header");
+        if (header == null)
+        {
+            // 1.3 agents sometimes nest Header differently or the root isn't
+            // MTConnectStreams — last resort: any Header element anywhere
+            header = doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "Header");
+        }
         if (header != null)
         {
             instAttr = header.Attribute("instanceId")?.Value;
@@ -228,7 +240,9 @@ public class MtConnectClient
 
         // header: instance change (agent restart) or cursor below the buffer
         // window both invalidate streaming state — reseed from /current
-        var header = doc.Root?.Element(Ns + "Header");
+        var header = doc.Root?.Element(StreamsNs(doc) + "Header");
+        if (header == null)
+            header = doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "Header");
         if (header != null)
         {
             instAttr = header.Attribute("instanceId")?.Value;
