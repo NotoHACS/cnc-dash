@@ -98,8 +98,16 @@ public class MtConnectClient
                 di.Contains(t, StringComparison.OrdinalIgnoreCase));
             if (isAssetTrigger)
             {
-                result.AssetChangedTrigger = true;
-                result.ChangedAssetId = e.Value;
+                // the agent re-emits the CURRENT tool's assetId every poll;
+                // change-detect the value like any other item so a targeted
+                // fetch fires only on an actual tool/asset change (the full
+                // refetch still happens on the AssetSeconds cadence)
+                lastValues.TryGetValue(di, out var prevTrig);
+                if (prevTrig != e.Value)
+                {
+                    result.AssetChangedTrigger = true;
+                    result.ChangedAssetId = e.Value;
+                }
                 lastValues[di] = e.Value;
                 continue;
             }
