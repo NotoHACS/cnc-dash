@@ -77,7 +77,7 @@
         }
     </div>
     <div class="card">
-        <div class="label">Efficiency</div>
+        <div class="label">Speedometer</div>
         @if (grace)
         {
             <div class="big muted">on pace</div>
@@ -92,7 +92,7 @@
     @if (s.PercentOfQuota is double quotaPct)
     {
         <div class="card">
-            <div class="label">Quota</div>
+            <div class="label">Odometer</div>
             <div class="big">@quotaPct.ToString("0")%</div>
             <div class="bar"><div class="fill na" style="width:@Math.Clamp(quotaPct, 0, 100).ToString("0")%"></div></div>
             <div class="sub">@s.PartsThisShift of @s.QuotaParts parts</div>
