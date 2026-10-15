@@ -129,7 +129,7 @@ a { color: #58a6ff; text-decoration: none; }
 .fill.ng     { background: var(--red); }
 .fill.na     { background: #3b4250; }
 
-.tools { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tools { width: 100%; border-collapse: collapse; font-size: 18px; }
 .tools th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .tools td { padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .tools tr.selected td { background: #1c2530; }
@@ -144,7 +144,7 @@ a { color: #58a6ff; text-decoration: none; }
 .oktools .caret::after { content: "\25B8"; display: inline-block; margin-right: 6px; }
 .oktools.open .caret::after { content: "\25BE"; }
 .muted { color: var(--muted); }
-.mono { font-family: ui-monospace, monospace; font-size: 12px; }
+.mono { font-family: ui-monospace, monospace; font-size: 16px; }
 
 .lifebar { display: inline-block; width: 110px; height: 8px; background: #262c36; border-radius: 4px; overflow: hidden; vertical-align: middle; margin-left: 8px; }
 .lifebar .fill { display: block; height: 100%; }
@@ -223,8 +223,8 @@ button:hover { background: #2a313b; }
     .alarmbar { padding: 8px 10px; font-size: 13px; gap: 6px; margin-bottom: 10px; }
     .alarmbar .ab-msg { max-width: 42vw; }
 
-    /* tools table: smaller, still scrollable horizontally */
-    .tools { font-size: 13px; }
+    /* tools table: smaller than desktop boost but still legible */
+    .tools { font-size: 16px; }
     .tools th, .tools td { padding: 5px 6px; }
     .lifebar { width: 64px; margin-left: 6px; }
     .oktools td { padding: 6px; }
