@@ -13,6 +13,7 @@ public class MtConnectClient
     private readonly HttpClient http;
     private readonly CollectorConfig cfg;
     private readonly Diagnostics? diag;
+    private bool cvLoggedOnce;
 
     public MtConnectClient(CollectorConfig cfg)
     {
@@ -84,27 +85,14 @@ public class MtConnectClient
 
         var seqOutageLogged = false;
         var elements = doc.Descendants()
-            .Where(e => e.Attribute("dataItemId") != null && e.Attribute("timestamp") != null);
+            .Where(e => e.Attribute("dataItemId") != null);
 
         foreach (var e in elements)
         {
             var di = e.Attribute("dataItemId")!.Value;
-            var ts = DateTime.Parse(e.Attribute("timestamp")!.Value).ToUniversalTime();
-            diag?.Observe(di, e.Value, e.Attribute("timestamp")!.Value, e.Attribute("sequence")?.Value ?? "");
-            var seqOk = long.TryParse(e.Attribute("sequence")!.Value, out var seq);
-            if (!seqOk) continue;
-
-            if ((nextSeq > 0 && (ulong)seq >= nextSeq) || (firstSeq > 0 && (ulong)seq < firstSeq))
-            {
-                // stale/unknown instance: still post this value (it is current
-                // reality), but reset the cache so re-detection starts clean
-                if (!seqOutageLogged)
-                {
-                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] sequence {seq} outside agent window [{firstSeq}, {nextSeq}) - resnapshotting");
-                    seqOutageLogged = true;
-                    lastValues.Clear();
-                }
-            }
+            var tsAttr = e.Attribute("timestamp")?.Value;
+            var ts = tsAttr != null ? DateTime.Parse(tsAttr).ToUniversalTime() : DateTime.UtcNow;
+            diag?.Observe(di, e.Value, tsAttr ?? "", e.Attribute("sequence")?.Value ?? "");
 
             var isAssetTrigger = cfg.AssetTriggerItems.Any(t =>
                 di.Contains(t, StringComparison.OrdinalIgnoreCase));
@@ -116,8 +104,36 @@ public class MtConnectClient
                 continue;
             }
 
-            var sample = SampleRow.From(di, ts, seq, e);
+            var sample = SampleRow.From(di, ts, 0, e);
             if (sample is null) continue;
+
+            // sequence: agent-provided when present. Okuma extension elements
+            // (e.g. Mp1CommonVariable, subType x:COMMON) may omit timestamp/
+            // sequence entirely — for those, fall back to a stable hash of the
+            // payload so the server's (di, seq) dedupe key still changes when
+            // the value does.
+            var seqStr = e.Attribute("sequence")?.Value;
+            if (seqStr != null && long.TryParse(seqStr, out var agentSeq))
+            {
+                sample.seq = agentSeq;
+
+                if ((nextSeq > 0 && (ulong)agentSeq >= nextSeq) || (firstSeq > 0 && (ulong)agentSeq < firstSeq))
+                {
+                    // stale/unknown instance: still post this value (it is
+                    // current reality), but reset the cache so re-detection
+                    // starts clean
+                    if (!seqOutageLogged)
+                    {
+                        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] sequence {agentSeq} outside agent window [{firstSeq}, {nextSeq}) - resnapshotting");
+                        seqOutageLogged = true;
+                        lastValues.Clear();
+                    }
+                }
+            }
+            else
+            {
+                sample.seq = HashPayload(sample.ValueCanonical());
+            }
 
             // canonical value = only the payload fields we care about
             var value = sample.ValueCanonical();
@@ -126,6 +142,14 @@ public class MtConnectClient
 
             lastValues[di] = value;
             result.Samples.Add(sample);
+
+            // first common-variable post visibility (subsequent change posts
+            // stay silent by design)
+            if (di.Equals("Mp1CommonVariable", StringComparison.OrdinalIgnoreCase) && !cvLoggedOnce)
+            {
+                cvLoggedOnce = true;
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [debug] common variables posted: stations={sample.stationsOn} tally={sample.partsTally} ({sample.commonVars?.Length ?? 0} chars)");
+            }
         }
 
         // persist agent bookkeeping alongside the last values (state.json)
@@ -266,7 +290,10 @@ public class SampleRow
         var sb = new StringBuilder();
         int? stations = null;
         double? tally = null;
-        foreach (var tok in raw.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+
+        // whitespace-agnostic: the agent may emit tokens separated by plain
+        // spaces, tabs, or newlines
+        foreach (var tok in raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var ci = tok.IndexOf(':');
             if (ci <= 0) continue;
@@ -282,6 +309,22 @@ public class SampleRow
         var map = sb.ToString();
         if (map.Length > 4000) map = map[..4000];
         return (map, stations, tally);
+    }
+
+    // FNV-1a 64 of the payload → stable positive sequence for items whose agent
+    // element carries no sequence attribute (server dedupe key still value-bound)
+    private static long HashPayload(string value)
+    {
+        unchecked
+        {
+            ulong h = 14695981039346656037;
+            foreach (var ch in value)
+            {
+                h ^= ch;
+                h *= 1099511628211;
+            }
+            return (long)(h & 0x7FFFFFFFFFFFFFFF);
+        }
     }
 }
 /// <summary>
