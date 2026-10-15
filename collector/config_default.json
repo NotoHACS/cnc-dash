@@ -6,5 +6,6 @@
   "ServerUrl": "http://localhost:5154",
   "MachineId": "cnc12",
   "ApiKey": "",
-  "UploadSeconds": 5
+  "UploadSeconds": 5,
+  "DiagnosticDumpSeconds": 0
 }

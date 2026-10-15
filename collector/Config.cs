@@ -16,6 +16,13 @@ public class CollectorConfig
     public string ApiKey { get; set; } = "";
     public int UploadSeconds { get; set; } = 5;
 
+    // Temporary instrumentation: observe every data item seen in /current
+    // (including ones the parser drops) and dump itemId/count/first/last to a
+    // log file every N seconds. 0 = off. Useful for discovering the agent's
+    // real data item ids (e.g. the actual cumulative part counter).
+    public int DiagnosticDumpSeconds { get; set; } = 0;
+    public string DiagnosticLogPath { get; set; } = "datadump.log";
+
     // Data items to track: dataItemId -> null = any element, tracked generically.
     // Anything not listed is ignored.
     public string[] SampleDataItems { get; set; } = new[]

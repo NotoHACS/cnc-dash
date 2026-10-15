@@ -23,6 +23,9 @@ public static class Program
         var mtconnect = new MtConnectClient(cfg);
         var assets = new AssetClient(cfg);
 
+        if (mtconnect.Diagnostics is { } diag)
+            Console.WriteLine($"  diagnostics: every {cfg.DiagnosticDumpSeconds}s -> {diag.LogPath}");
+
         // Persisted last-seen values so a restart doesn't re-send an unchanged snapshot.
         var statePath = Path.Combine(exeDir, "state.json");
         var lastValues = LoadState(statePath);
@@ -38,6 +41,9 @@ public static class Program
 
         var nextPoll = DateTime.UtcNow;
         var nextUpload = DateTime.UtcNow.AddSeconds(cfg.UploadSeconds);
+        var nextDump = mtconnect.Diagnostics is null
+            ? DateTime.MaxValue
+            : DateTime.UtcNow.AddSeconds(cfg.DiagnosticDumpSeconds);
 
         while (!cts.IsCancellationRequested)
         {
@@ -94,6 +100,12 @@ public static class Program
                     nextUpload = DateTime.UtcNow.AddSeconds(cfg.UploadSeconds);
                     if (remaining > 0)
                         Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {remaining} batch(es) buffered");
+                }
+
+                if (now >= nextDump)
+                {
+                    mtconnect.Diagnostics?.Dump();
+                    nextDump = DateTime.UtcNow.AddSeconds(cfg.DiagnosticDumpSeconds);
                 }
             }
             catch (Exception ex)

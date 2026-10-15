@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
 
@@ -10,10 +11,12 @@ public class MtConnectClient
 
     private readonly HttpClient http;
     private readonly CollectorConfig cfg;
+    private readonly Diagnostics? diag;
 
     public MtConnectClient(CollectorConfig cfg)
     {
         this.cfg = cfg;
+        diag = cfg.DiagnosticDumpSeconds > 0 ? new Diagnostics(cfg) : null;
         http = new HttpClient
         {
             Timeout = TimeSpan.FromSeconds(10),
@@ -21,6 +24,9 @@ public class MtConnectClient
         };
         http.DefaultRequestHeaders.ConnectionClose = true;
     }
+
+    /// <summary>Temporary per-poll data-item observer; null when diagnostics are off.</summary>
+    public Diagnostics? Diagnostics => diag;
 
     /// <summary>Fetch /current and return changed samples + tool-change triggers. Null on unreachable/parse failure.</summary>
     public async Task<PollResult?> PollAsync(Dictionary<string, string> lastValues)
@@ -58,6 +64,7 @@ public class MtConnectClient
         {
             var di = e.Attribute("dataItemId")!.Value;
             var ts = DateTime.Parse(e.Attribute("timestamp")!.Value).ToUniversalTime();
+            diag?.Observe(di, e.Value, e.Attribute("timestamp")!.Value, e.Attribute("sequence")?.Value ?? "");
             var seqOk = long.TryParse(e.Attribute("sequence")!.Value, out var seq);
             if (!seqOk) continue;
 
@@ -152,4 +159,70 @@ public class SampleRow
         if (runtime.HasValue) return $"runtime:{runtime.Value:0.#}";
         return "";
     }
+}
+/// <summary>
+/// Temporary instrumentation for finding unmapped data items: observes every
+/// dataItem element seen in /current and periodically appends a compact
+/// itemId/count/first/last dump to a log file. Off unless DiagnosticDumpSeconds &gt; 0.
+/// </summary>
+public class Diagnostics
+{
+    private class Obs
+    {
+        public int Count;
+        public string? FirstValue;
+        public string? LastValue;
+        public string? LastTs;
+    }
+
+    private readonly string path;
+    private readonly Dictionary<string, Obs> items = new();
+
+    public string LogPath { get; }
+
+    public Diagnostics(CollectorConfig cfg)
+    {
+        var p = string.IsNullOrWhiteSpace(cfg.DiagnosticLogPath) ? "datadump.log" : cfg.DiagnosticLogPath!;
+        path = Path.IsPathRooted(p) ? p : Path.Combine(AppContext.BaseDirectory, p);
+        LogPath = path;
+    }
+
+    public void Observe(string id, string value, string tsRaw, string seqRaw)
+    {
+        var v = Trunc(value);
+        if (!items.TryGetValue(id, out var o))
+        {
+            items[id] = new Obs { Count = 1, FirstValue = v, LastValue = v, LastTs = tsRaw };
+        }
+        else
+        {
+            o.Count = o.Count + 1;
+            o.LastValue = v;
+            o.LastTs = tsRaw;
+        }
+    }
+
+    public void Dump()
+    {
+        if (items.Count == 0) return;
+        try
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"=== {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
+            foreach (var kv in items.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                sb.AppendLine($"{kv.Key} count={kv.Value.Count} first='{kv.Value.FirstValue}' last='{kv.Value.LastValue}'");
+            }
+            File.AppendAllText(path, sb.ToString());
+            items.Clear(); // fresh accumulation window: count/first reset each dump
+        }
+        catch (Exception ex)
+        {
+            // a locked/missing file must never kill the collector; keep the dict
+            // so a later successful dump still covers this window
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] diagnostics dump failed: {ex.Message}");
+        }
+    }
+
+    private static string Trunc(string v) => v.Length <= 200 ? v : v[..200];
 }
