@@ -152,8 +152,16 @@ try {
 
     if ($shaAsset) {
         Log "verifying sha256..."
-        $expected = ((Invoke-WebRequest -Uri $shaAsset.browser_download_url -UseBasicParsing -UserAgent "cncdash-collector-update").Content.Trim().Split(" ")[0]).ToLower()
-        $actual = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
+        $shaPath = Join-Path $tmp "$ZipName.sha256"
+        Invoke-WebRequest -Uri $shaAsset.browser_download_url -OutFile $shaPath -UseBasicParsing -UserAgent "cncdash-collector-update"
+
+        # PS 5.1: Invoke-WebRequest .Content returns byte[] for non-text assets
+        # — read the sidecar from disk as TEXT instead. Format: "HASH  filename"
+        # (two-space separator, CRLF/LF trailing whitespace tolerated)
+        $shaText = [System.IO.File]::ReadAllText($shaPath).Trim()
+        if ([string]::IsNullOrWhiteSpace($shaText)) { throw "empty sha256 sidecar for $ZipName" }
+        $expected = ($shaText -split "\s+")[0].ToUpperInvariant()
+        $actual = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToUpperInvariant()
         if ($expected -ne $actual) { throw "checksum mismatch: expected $expected got $actual ( refusing swap )" }
         Log "sha256 verified"
     } else {
