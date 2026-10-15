@@ -32,21 +32,21 @@ a { color: #58a6ff; text-decoration: none; }
 
 .topbar .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; align-self: center; }
 
-/* status box side blocks: current tool (left) + spindle RPM (right);
-   half visual weight of the earlier topbar treatment */
-.statusbox .sbtool {
-    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
-    font-size: 13px; line-height: 1.15;
+/* status box pills: Current Tool (blue) + RPM (green) side by side, centered
+   in the colored band */
+.statusbox .sbpills {
+    display: flex; justify-content: center; align-items: stretch; gap: 10px;
 }
-.statusbox .sbtool .sbt-label { color: var(--muted); white-space: nowrap; }
-.statusbox .sbtool .sbt-value { font-size: 20px; font-weight: 700; }
-.statusbox .sbrpm {
-    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
-    display: flex; align-items: baseline; gap: 5px;
+.statusbox .sbpill {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; min-width: 92px; padding: 6px 16px; border-radius: 10px; line-height: 1.15;
 }
-.statusbox .sbrpm .sbrpm-num { font-size: 22px; font-weight: 800; line-height: 1; }
-.statusbox .sbrpm .sbrpm-unit { color: var(--muted); font-size: 12px; }
+.statusbox .sbtool { background: #1a3350; border: 1px solid #58a6ff66; }
+.statusbox .sbtool .sbpill-label { color: #9ecbff; opacity: .8; font-size: 11px; }
+.statusbox .sbtool .sbpill-value { color: #9ecbff; font-size: 20px; font-weight: 700; }
+.statusbox .sbrpm { background: #12351d; border: 1px solid #7ee2a866; }
+.statusbox .sbrpm .sbpill-label { color: #7ee2a8; opacity: .8; font-size: 11px; }
+.statusbox .sbrpm .sbpill-value { color: #7ee2a8; font-size: 20px; font-weight: 700; }
 .pill {
     display: inline-block; padding: 2px 10px; border-radius: 99px;
     background: #1f2530; color: var(--muted); font-size: 12px;

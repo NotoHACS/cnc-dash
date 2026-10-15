@@ -28,13 +28,15 @@
 }
 
 <div class="statusbox @cls">
-    <div class="sbtool">
-        <div class="sbt-label">Current Tool</div>
-        <div class="sbt-value">@(s.CurrentTool?.ToString() ?? "—")</div>
-    </div>
-    <div class="sbrpm">
-        <span class="sbrpm-num">@(s.LastSpindleSpeed is double rpm ? rpm.ToString("0") : "—")</span>
-        <span class="sbrpm-unit">RPM</span>
+    <div class="sbpills">
+        <div class="sbpill sbtool">
+            <div class="sbpill-label">Current Tool</div>
+            <div class="sbpill-value">@(s.CurrentTool?.ToString() ?? "—")</div>
+        </div>
+        <div class="sbpill sbrpm">
+            <div class="sbpill-label">RPM</div>
+            <div class="sbpill-value">@(s.LastSpindleSpeed is double rpm ? rpm.ToString("0") : "—")</div>
+        </div>
     </div>
 </div>
 
