@@ -46,11 +46,12 @@ public class AlarmFeedService : BackgroundService
     {
         var server = Environment.GetEnvironmentVariable("NTFY_SERVER_URL") ?? "https://ntfy.fehustn.cc";
         var topic = Environment.GetEnvironmentVariable("NTFY_TOPIC") ?? "cnc12";
-        var url = $"{server}/{topic}/json?poll=1&since=all";
 
-        // initial: replay the retained cache, keep only the newest; then tail
-        // with since=<id of last seen> — the same session the notify app shows.
-        string? since = null;
+        // live-only subscription: since=<startup unix ts> — the retained message
+        // cache is NOT replayed (a probe/test post from hours ago must not show
+        // as current); only posts arriving after the server starts are shown,
+        // then tailed with since=<last id>, same session mechanics as the app.
+        var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
         var backoff = TimeSpan.FromSeconds(2);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -58,7 +59,7 @@ public class AlarmFeedService : BackgroundService
             try
             {
                 var http = httpFactory.CreateClient("alarmfeed");
-                var reqUrl = since == null ? url : $"{server}/{topic}/json?poll=1&since={Uri.EscapeDataString(since)}";
+                var reqUrl = $"{server}/{topic}/json?poll=1&since={Uri.EscapeDataString(since)}";
                 using var resp = await http.GetAsync(reqUrl, stoppingToken);
                 var body = await resp.Content.ReadAsStringAsync(stoppingToken);
                 NtfyMessage? newest = null;
@@ -76,15 +77,8 @@ public class AlarmFeedService : BackgroundService
                     }
                     catch { /* skip bad line */ }
                 }
-                if (since == null && newest != null)
-                {
-                    // only adopt history as "latest" if it is recent — a stale
-                    // cached alarm from days ago must not show as current
-                    if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - newest.Time < 3600)
-                        Store(newest);
-                }
                 if (lastId != null) since = lastId;
-                if (newest != null && since != null) StoreIfNewer(newest);
+                if (newest != null) StoreIfNewer(newest);
                 backoff = TimeSpan.FromSeconds(2);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
