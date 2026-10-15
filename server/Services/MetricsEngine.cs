@@ -263,6 +263,9 @@ public class MetricsEngine
             prevFlag = cur;
         }
 
+        // parts from pulses: one completed cycle each → PartsPerCycle parts
+        long flagParts = flagPulses * cfg.PartsPerCycle;
+
         // learned cycle: rolling median of pulse cadence, blended with seeded expectation
         if (cycleSeconds.Count > 0)
         {
