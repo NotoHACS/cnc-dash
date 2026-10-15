@@ -186,3 +186,54 @@ button:hover { background: #2a313b; }
 .dot-off .dot    { background: #3b4250; }
 .mcard .mname { font-weight: 700; font-size: 18px; }
 .mcard .mstat { font-size: 20px; margin: 6px 0; }
+
+/* ── mobile: condensed layout ───────────────────────────────────────────── */
+@media (max-width: 720px) {
+    .wrap { padding: 10px; }
+
+    /* topbar: tighter, machine name prominent, updated timestamp may wrap */
+    .topbar { gap: 6px 12px; padding: 8px 12px; margin-bottom: 10px; }
+    .machine { font-size: 17px; }
+    .program, .part, .pill, .updated { font-size: 12px; }
+
+    /* cycle gauge stacks: text above, full-width bar below */
+    .cyclecard { flex-direction: column; align-items: stretch; gap: 10px; padding: 12px; margin-bottom: 10px; }
+    .cyclecard .cc-left { min-width: 0; text-align: center; }
+    .cyclecard .big { font-size: 22px; }
+    .cc-gauge { min-width: 0; }
+    .cc-track { height: 42px; border-radius: 10px; }
+    .cc-fill { border-radius: 10px; }
+    .cc-pct { font-size: 17px; }
+
+    /* machine card pills: keep the 2-up row, slightly narrower */
+    .sbpill { width: 108px; padding: 6px 12px; }
+    .sbtool .sbpill-value, .sbrpm .sbpill-value, .sbpallet .sbpill-value { font-size: 17px; }
+    .machinecard { gap: 6px; }
+    .palletline { font-size: 13px; padding: 3px 14px; }
+
+    /* metrics grid: 2-up */
+    .grid { grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+    .card { padding: 12px; }
+    .card .big { font-size: 24px; }
+    .label { font-size: 11px; margin-bottom: 4px; }
+    .sub { font-size: 12px; }
+    .bar { height: 8px; margin-top: 6px; }
+
+    /* alarm bar: compact, message may truncate */
+    .alarmbar { padding: 8px 10px; font-size: 13px; gap: 6px; margin-bottom: 10px; }
+    .alarmbar .ab-msg { max-width: 42vw; }
+
+    /* tools table: smaller, still scrollable horizontally */
+    .tools { font-size: 13px; }
+    .tools th, .tools td { padding: 5px 6px; }
+    .lifebar { width: 64px; margin-left: 6px; }
+    .oktools td { padding: 6px; }
+}
+
+@media (max-width: 480px) {
+    /* very small: pills shrink further, single-column metrics */
+    .grid { grid-template-columns: 1fr; }
+    .sbpill { width: 46%; padding: 6px 6px; }
+    .machine { font-size: 16px; }
+    .topbar .right { margin-left: 0; width: 100%; }
+}
