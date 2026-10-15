@@ -36,7 +36,7 @@
 <div class="statusbox @cls">
     @if (s.CurrentTool is int cur)
     {
-        <span class="pill curtool statustool">T@(cur) in spindle</span>
+        <span class="pill curtool statustool">Current Tool @cur</span>
     }
     <div class="reason">@s.StatusReason</div>
     <div class="shift">@s.ShiftName &middot; started @s.ShiftStartUtc.ToLocalTime().ToString("HH:mm")</div>
@@ -69,7 +69,7 @@
         <div class="big">@s.PartsThisShift</div>
         @if (s.StationsOn is int stations)
         {
-            <div class="sub">@stations stations on</div>
+            <div class="sub">@stations active stations</div>
         }
         else
         {
