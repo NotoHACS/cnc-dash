@@ -19,6 +19,9 @@ builder.Services.AddSingleton<JsonOptionsProvider>();
 builder.Services.AddSingleton<MachineResolver>();
 builder.Services.AddDbContext<CncDbContext>(o => o.UseSqlite($"Data Source={dbPath}"));
 builder.Services.AddSingleton<MetricsEngine>();
+builder.Services.AddHttpClient("alarmfeed");
+builder.Services.AddSingleton<AlarmFeedService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<AlarmFeedService>());
 
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -108,6 +111,14 @@ app.MapGet("/api/status/{segment}", async (string segment, MachineResolver resol
     }
     var status = await engine.ComputeAsync(machine.Id);
     return status is null ? Results.NotFound() : Results.Ok(status);
+});
+
+// latest ntfy post on the machine's alarm topic (server-side subscription via
+// AlarmFeedService); null body when the topic has nothing recent
+app.MapGet("/api/alarmfeed", (AlarmFeedService feed) =>
+{
+    var snap = feed.Snapshot();
+    return snap is null ? Results.NotFound() : Results.Ok(snap);
 });
 
 app.MapRazorPages();
