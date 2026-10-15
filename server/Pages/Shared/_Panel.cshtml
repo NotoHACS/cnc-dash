@@ -31,30 +31,42 @@
     var collapsedNa = orderedTools.Count(x => x.Rank == 1 && x.T.Grade == "na");
     var toggleLabel = collapsedNa > 0 ? $"OK / N-A tools ({collapsedCount})" : $"OK tools ({collapsedCount})";
     var okTogglePending = true;
+
+    // cycle progress percent for the gauge (elapsed / expected, clamped)
+    double? cyclePct = null;
+    if (s.CurrentCycleSeconds is double ccs && s.LearnedCycleSeconds is double ctarget && ctarget > 0)
+        cyclePct = Math.Clamp(ccs / ctarget * 100, 0, 100);
 }
 
-<div class="cyclecard @cls">
-    <div class="label">Cycle Progress</div>
-    @if (s.CurrentCycleSeconds is double cs)
-    {
-        @if (s.LearnedCycleSeconds is double target && target > 0)
+<div class="card cyclecard">
+    <div class="cc-left">
+        <div class="label">Cycle Progress</div>
+        @if (s.CurrentCycleSeconds is double cs)
         {
-            var pct = Math.Clamp(cs / target * 100, 0, 100);
-            <div class="big">@Mmss(cs) / @Mmss(target)</div>
-            <div class="bar"><div class="fill" style="width:@pct.ToString("0")%"></div></div>
-            <div class="sub">@pct.ToString("0")% of cycle</div>
+            @if (s.LearnedCycleSeconds is double target && target > 0)
+            {
+                var pct = Math.Clamp(cs / target * 100, 0, 100);
+                <div class="big">@Mmss(cs) / @Mmss(target)</div>
+                <div class="sub">@pct.ToString("0")% of cycle</div>
+            }
+            else
+            {
+                <div class="big">@Mmss(cs)</div>
+                <div class="sub">elapsed only</div>
+            }
         }
         else
         {
-            <div class="big">@Mmss(cs)</div>
-            <div class="sub">elapsed</div>
+            <div class="big">&mdash;</div>
+            <div class="sub">no cycle data</div>
         }
-    }
-    else
-    {
-        <div class="big">&mdash;</div>
-        <div class="sub">no cycle data</div>
-    }
+    </div>
+    <div class="cc-gauge">
+        <div class="cc-track">
+            <div class="cc-fill" style="width:@(cyclePct?.ToString("0") ?? "0")%"></div>
+            <div class="cc-pct">@(cyclePct is double cp ? cp.ToString("0") + "%" : "—")</div>
+        </div>
+    </div>
 </div>
 
 <div class="grid">

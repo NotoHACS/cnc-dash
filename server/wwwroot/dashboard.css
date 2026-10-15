@@ -39,7 +39,7 @@ a { color: #58a6ff; text-decoration: none; }
 }
 .sbpill {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 2px; min-width: 92px; padding: 6px 16px; border-radius: 10px; line-height: 1.15;
+    gap: 2px; padding: 8px 22px; border-radius: 999px; line-height: 1.15;
 }
 .sbtool { background: #1a3350; border: 1px solid #58a6ff66; }
 .sbtool .sbpill-label { color: #9ecbff; opacity: .8; font-size: 11px; }
@@ -48,12 +48,20 @@ a { color: #58a6ff; text-decoration: none; }
 .sbrpm .sbpill-label { color: #c9b3ff; opacity: .8; font-size: 11px; }
 .sbrpm .sbpill-value { color: #c9b3ff; font-size: 20px; font-weight: 700; }
 
-/* cycle progress: the card that inherits the machine state color */
-.cyclecard { padding: 18px 22px; border-radius: 14px; margin-bottom: 14px; border: 1px solid var(--line); text-align: center; }
-.cyclecard .label { color: inherit; opacity: .75; margin-bottom: 6px; }
-.cyclecard .sub { color: inherit; opacity: .85; }
-.cyclecard .bar { background: rgba(255,255,255,.18); border-radius: 6px; height: 10px; margin-top: 10px; overflow: hidden; }
-.cyclecard .bar .fill { background: rgba(255,255,255,.6); height: 100%; display: block; }
+/* cycle progress: text column left, big horizontal gauge right */
+.cyclecard { padding: 16px 20px; margin-bottom: 14px; display: flex; gap: 20px; align-items: center; }
+.cyclecard .cc-left { min-width: 190px; text-align: left; }
+.cyclecard .big { font-size: 26px; }
+.cc-gauge { flex: 1 1 auto; min-width: 220px; display: flex; align-items: center; }
+.cc-track {
+    position: relative; flex: 1; height: 52px; background: #262c36;
+    border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+}
+.cc-fill { position: absolute; top: 0; bottom: 0; left: 0; background: #58a6ff; border-radius: 14px; }
+.cc-pct {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 700; color: var(--text);
+}
 
 /* machine card (grid bottom-right): current tool + rpm pills */
 .machinecard { display: flex; justify-content: center; align-items: center; }
