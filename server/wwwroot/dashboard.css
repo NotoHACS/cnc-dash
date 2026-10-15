@@ -39,7 +39,7 @@ a { color: #58a6ff; text-decoration: none; }
 }
 .sbpill {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 2px; padding: 8px 22px; border-radius: 999px; line-height: 1.15;
+    gap: 2px; padding: 8px 22px; border-radius: 8px; line-height: 1.15;
 }
 .sbtool { background: #1a3350; border: 1px solid #58a6ff66; }
 .sbtool .sbpill-label { color: #9ecbff; opacity: .8; font-size: 11px; }
