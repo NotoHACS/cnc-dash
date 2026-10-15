@@ -28,6 +28,14 @@
 }
 
 <div class="statusbox @cls">
+    <div class="sbtool">
+        <div class="sbt-label">Current Tool</div>
+        <div class="sbt-value">@(s.CurrentTool?.ToString() ?? "—")</div>
+    </div>
+    <div class="sbrpm">
+        <span class="sbrpm-num">@(s.LastSpindleSpeed is double rpm ? rpm.ToString("0") : "—")</span>
+        <span class="sbrpm-unit">RPM</span>
+    </div>
     <div class="reason">@s.StatusReason</div>
     <div class="shift">@s.ShiftName &middot; started @s.ShiftStartUtc.ToLocalTime().ToString("HH:mm")</div>
 </div>

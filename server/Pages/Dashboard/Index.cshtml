@@ -42,15 +42,21 @@
     else
     {
         var st = Model.Status!;
-        <div class="topbar toolsbar">
-            <div class="toolblock">
-                <div class="tb-label">Current Tool</div>
-                <div class="tb-value">@(st.CurrentTool?.ToString() ?? "—")</div>
-            </div>
-            <div class="rpmblock">
-                <span class="rpm-num">@(st.LastSpindleSpeed is double rpm ? rpm.ToString("0") : "—")</span>
-                <span class="rpm-unit">RPM</span>
-            </div>
+        var col = st.Color.ToString().ToLowerInvariant();
+        var age = st.LastSampleUtc is null
+            ? double.MaxValue
+            : (DateTime.UtcNow - st.LastSampleUtc.Value).TotalSeconds;
+        var updCls = age > 120 ? "old" : age > 30 ? "stale" : "";
+        <div class="topbar dot-@col">
+            <span class="dot"></span>
+            <span class="machine">@st.DisplayName</span>
+            <span class="pill">@st.PartName</span>
+            <span class="pill">@(st.Program ?? "-")</span>
+            <span class="updated @updCls">updated @st.LastSampleUtc?.ToLocalTime().ToString("HH:mm:ss")</span>
+            <span class="navlinks">
+                <a href="/dashboard" class="muted">&larr; all machines</a>
+                <a href="/dashboard/admin/@Uri.EscapeDataString(st.MachineId)">admin</a>
+            </span>
         </div>
         <div id="live" hx-get="/dashboard/panel/@Uri.EscapeDataString(Model.Status.MachineId)"
              hx-trigger="every 5s" hx-swap="innerHTML">

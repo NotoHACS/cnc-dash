@@ -32,18 +32,21 @@ a { color: #58a6ff; text-decoration: none; }
 
 .topbar .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; align-self: center; }
 
-/* machine-view top bar: Current Tool block + RPM readout only */
-.topbar.toolsbar { align-items: stretch; gap: 0; padding: 4px 0; }
-.toolblock {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 2px; min-height: 44px; padding: 0 16px; border-right: 1px solid var(--line);
-    font-size: 16px; line-height: 1.15;
+/* status box side blocks: current tool (left) + spindle RPM (right);
+   half visual weight of the earlier topbar treatment */
+.statusbox .sbtool {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    font-size: 13px; line-height: 1.15;
 }
-.toolblock .tb-label { color: var(--muted); white-space: nowrap; }
-.toolblock .tb-value { font-weight: 700; white-space: nowrap; }
-.rpmblock { display: flex; align-items: baseline; gap: 6px; padding: 0 16px; align-self: center; }
-.rpm-num { font-size: 24px; font-weight: 800; line-height: 1; }
-.rpm-unit { color: var(--muted); font-size: 13px; }
+.statusbox .sbtool .sbt-label { color: var(--muted); white-space: nowrap; }
+.statusbox .sbtool .sbt-value { font-size: 20px; font-weight: 700; }
+.statusbox .sbrpm {
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    display: flex; align-items: baseline; gap: 5px;
+}
+.statusbox .sbrpm .sbrpm-num { font-size: 22px; font-weight: 800; line-height: 1; }
+.statusbox .sbrpm .sbrpm-unit { color: var(--muted); font-size: 12px; }
 .pill {
     display: inline-block; padding: 2px 10px; border-radius: 99px;
     background: #1f2530; color: var(--muted); font-size: 12px;
