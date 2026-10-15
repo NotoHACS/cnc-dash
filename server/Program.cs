@@ -58,6 +58,7 @@ using (var scope = app.Services.CreateScope())
     await EnsureColumnAsync(sqconn, "MachineConfigs", "PartsTallyVarIndex", "INTEGER NOT NULL DEFAULT 41");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "StationsVarIndex", "INTEGER NOT NULL DEFAULT 40");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "PartNameVarIndex", "INTEGER NOT NULL DEFAULT 65");
+    await EnsureColumnAsync(sqconn, "MachineConfigs", "QuotaParts", "INTEGER NOT NULL DEFAULT 48");
     if (sqconn.State == ConnectionState.Open) await sqconn.CloseAsync();
 
     if (!await db.Machines.AnyAsync())

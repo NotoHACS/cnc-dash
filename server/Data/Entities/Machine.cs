@@ -67,5 +67,8 @@ public class MachineConfig
     // PartName). Falls back to PartName when the var is absent from the map.
     public int PartNameVarIndex { get; set; } = 65;
 
+    // Shift quota in parts (0 = off): quota gauge card on the dashboard.
+    public int QuotaParts { get; set; } = 48;
+
     public Machine? Machine { get; set; }
 }

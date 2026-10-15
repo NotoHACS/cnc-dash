@@ -352,6 +352,14 @@ public class MetricsEngine
                 status.PartName = status.PartNameFromVar;
         }
 
+        // quota gauge: parts / configured per-shift quota — independent of pace
+        // and learning; null when the feature is off (QuotaParts = 0). Rendered
+        // neutrally (no color grading; statusReason stays tied to efficiency).
+        status.PercentOfQuota = cfg.QuotaParts > 0
+            ? status.PartsThisShift / (double)cfg.QuotaParts * 100
+            : null;
+        status.QuotaParts = cfg.QuotaParts;
+
         // cycle progress anchor: cutting time at the last cycle start (latest 0->1
         // pulse or a program-line wrap, whichever is later) — elapsed-in-cycle is
         // cutting seconds, which excludes probe pauses. Mp1line dropping = restart.

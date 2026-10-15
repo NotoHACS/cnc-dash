@@ -35,6 +35,11 @@ public class MachineStatus
     public double ExpectedParts { get; set; }
     public double PercentOfExpected { get; set; }
 
+    // Quota gauge (independent of pace/learning): parts / QuotaParts; null when
+    // the feature is off (QuotaParts = 0). Rendered neutral, no color grading.
+    public int QuotaParts { get; set; }
+    public double? PercentOfQuota { get; set; }
+
     // which signal produced PartsThisShift: partcount pulse | cutting time est |
     // manual seed — exposed so the dashboard/API can show provenance
     public string? PartsSource { get; set; }

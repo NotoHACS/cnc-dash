@@ -47,6 +47,7 @@ public class IndexModel : PageModel
     [BindProperty] public int PartsTallyVarIndex { get; set; }
     [BindProperty] public int StationsVarIndex { get; set; }
     [BindProperty] public int PartNameVarIndex { get; set; }
+    [BindProperty] public int QuotaParts { get; set; }
     [BindProperty] public string? TimeZone { get; set; }
 
     [BindProperty] public string? NewMachineId { get; set; }
@@ -107,6 +108,7 @@ public class IndexModel : PageModel
         cfg.PartsTallyVarIndex = Math.Max(0, PartsTallyVarIndex);
         cfg.StationsVarIndex = Math.Max(0, StationsVarIndex);
         cfg.PartNameVarIndex = Math.Max(0, PartNameVarIndex);
+        cfg.QuotaParts = Math.Max(0, QuotaParts);
         cfg.TimeZone = string.IsNullOrWhiteSpace(TimeZone) ? cfg.TimeZone : TimeZone.Trim();
 
         await db.SaveChangesAsync();
@@ -154,6 +156,7 @@ public class IndexModel : PageModel
         PartsTallyVarIndex = cfg.PartsTallyVarIndex;
         StationsVarIndex = cfg.StationsVarIndex;
         PartNameVarIndex = cfg.PartNameVarIndex;
+        QuotaParts = cfg.QuotaParts;
         TimeZone = cfg.TimeZone;
 
         Shift1Enabled = cfg.Shift1Start != null;
