@@ -378,8 +378,11 @@ public class MetricsEngine
             if (pulseTss.Count > 0)
             {
                 var pulseTs = pulseTss[^1];
-                DateTime t0 = tcutShiftStart ?? tcutRows[0].TsUtc, t1 = t0;
-                double c0 = tcutShiftStart ?? tcutRows[0].TotalCuttingTime ?? 0, c1 = c0;
+                var first = tcutRows[0];
+                var t0 = first.TsUtc;
+                var c0 = first.TotalCuttingTime ?? 0;
+                var t1 = t0;
+                var c1 = c0;
                 foreach (var r in tcutRows)
                 {
                     if (r.TsUtc <= pulseTs) { t0 = r.TsUtc; c0 = r.TotalCuttingTime!.Value; }
