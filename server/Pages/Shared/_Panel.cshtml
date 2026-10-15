@@ -36,8 +36,6 @@
         <span class="sbrpm-num">@(s.LastSpindleSpeed is double rpm ? rpm.ToString("0") : "—")</span>
         <span class="sbrpm-unit">RPM</span>
     </div>
-    <div class="reason">@s.StatusReason</div>
-    <div class="shift">@s.ShiftName &middot; started @s.ShiftStartUtc.ToLocalTime().ToString("HH:mm")</div>
 </div>
 
 <div class="grid">
