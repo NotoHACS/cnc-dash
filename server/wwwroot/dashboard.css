@@ -34,19 +34,30 @@ a { color: #58a6ff; text-decoration: none; }
 
 /* status box pills: Current Tool (blue) + RPM (green) side by side, centered
    in the colored band */
-.statusbox .sbpills {
+.sbpills {
     display: flex; justify-content: center; align-items: stretch; gap: 10px;
 }
-.statusbox .sbpill {
+.sbpill {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 2px; min-width: 92px; padding: 6px 16px; border-radius: 10px; line-height: 1.15;
 }
-.statusbox .sbtool { background: #1a3350; border: 1px solid #58a6ff66; }
-.statusbox .sbtool .sbpill-label { color: #9ecbff; opacity: .8; font-size: 11px; }
-.statusbox .sbtool .sbpill-value { color: #9ecbff; font-size: 20px; font-weight: 700; }
-.statusbox .sbrpm { background: #2d1f47; border: 1px solid #a875ff66; }
-.statusbox .sbrpm .sbpill-label { color: #c9b3ff; opacity: .8; font-size: 11px; }
-.statusbox .sbrpm .sbpill-value { color: #c9b3ff; font-size: 20px; font-weight: 700; }
+.sbtool { background: #1a3350; border: 1px solid #58a6ff66; }
+.sbtool .sbpill-label { color: #9ecbff; opacity: .8; font-size: 11px; }
+.sbtool .sbpill-value { color: #9ecbff; font-size: 20px; font-weight: 700; }
+.sbrpm { background: #2d1f47; border: 1px solid #a875ff66; }
+.sbrpm .sbpill-label { color: #c9b3ff; opacity: .8; font-size: 11px; }
+.sbrpm .sbpill-value { color: #c9b3ff; font-size: 20px; font-weight: 700; }
+
+/* cycle progress: the card that inherits the machine state color */
+.cyclecard { padding: 18px 22px; border-radius: 14px; margin-bottom: 14px; border: 1px solid var(--line); text-align: center; }
+.cyclecard .label { color: inherit; opacity: .75; margin-bottom: 6px; }
+.cyclecard .sub { color: inherit; opacity: .85; }
+.cyclecard .bar { background: rgba(255,255,255,.18); border-radius: 6px; height: 10px; margin-top: 10px; overflow: hidden; }
+.cyclecard .bar .fill { background: rgba(255,255,255,.6); height: 100%; display: block; }
+
+/* machine card (grid bottom-right): current tool + rpm pills */
+.machinecard { display: flex; justify-content: center; align-items: center; }
+.machinecard .sbpills { align-self: stretch; }
 .pill {
     display: inline-block; padding: 2px 10px; border-radius: 99px;
     background: #1f2530; color: var(--muted); font-size: 12px;
@@ -56,13 +67,9 @@ a { color: #58a6ff; text-decoration: none; }
 .updated.old { color: var(--red); }
 .navlinks { display: inline-flex; gap: 10px; flex: none; white-space: nowrap; }
 
-.statusbox {
-    position: relative; padding: 12px 22px; border-radius: 14px; margin-bottom: 14px;
-    border: 1px solid var(--line); text-align: center;
-}
-.statusbox .reason { font-size: 18px; color: var(--text); }
-.statusbox .shift { color: var(--muted); margin-top: 6px; }
-/* current-tool pill rides inside the colored statusbox (top-right) */
+.navlinks { display: inline-flex; gap: 10px; flex: none; white-space: nowrap; }
+
+/* state-colored box kept for the cyclecard palette only */
 .green  { background: #12351d; color: #7ee2a8; }
 .yellow { background: #3a2b08; color: #f2cc60; }
 .red    { background: #3c1210; color: #ff8f88; }

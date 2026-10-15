@@ -16,6 +16,12 @@
     // first minutes of a shift. Rendered muted, no colored bar.
     var grace = (s.PartsThisShift == 0 && s.ExpectedParts == 0) || s.ShiftElapsedMinutes < 15;
 
+    string Mmss(double sec)
+    {
+        var t = TimeSpan.FromSeconds(Math.Max(0, sec));
+        return t.TotalMinutes < 60 ? t.ToString(@"mm\:ss") : t.ToString(@"hh\:mm\:ss");
+    }
+
     var orderedTools = s.Tools
         .Select(t => new { T = t, Rank = t.Grade is "warn" or "ng" ? 0 : 1 })
         .OrderBy(x => x.Rank)
@@ -27,17 +33,28 @@
     var okTogglePending = true;
 }
 
-<div class="statusbox @cls">
-    <div class="sbpills">
-        <div class="sbpill sbtool">
-            <div class="sbpill-label">Current Tool</div>
-            <div class="sbpill-value">@(s.CurrentTool?.ToString() ?? "—")</div>
-        </div>
-        <div class="sbpill sbrpm">
-            <div class="sbpill-label">RPM</div>
-            <div class="sbpill-value">@(s.LastSpindleSpeed is double rpm ? rpm.ToString("0") : "—")</div>
-        </div>
-    </div>
+<div class="cyclecard @cls">
+    <div class="label">Cycle Progress</div>
+    @if (s.CurrentCycleSeconds is double cs)
+    {
+        @if (s.LearnedCycleSeconds is double target && target > 0)
+        {
+            var pct = Math.Clamp(cs / target * 100, 0, 100);
+            <div class="big">@Mmss(cs) / @Mmss(target)</div>
+            <div class="bar"><div class="fill" style="width:@pct.ToString("0")%"></div></div>
+            <div class="sub">@pct.ToString("0")% of cycle</div>
+        }
+        else
+        {
+            <div class="big">@Mmss(cs)</div>
+            <div class="sub">elapsed</div>
+        }
+    }
+    else
+    {
+        <div class="big">&mdash;</div>
+        <div class="sub">no cycle data</div>
+    }
 </div>
 
 <div class="grid">
@@ -77,6 +94,18 @@
         <div class="label">Expired tools</div>
         <div class="big">@s.ExpiredTools</div>
         <div class="sub">tools with NG status</div>
+    </div>
+    <div class="card machinecard">
+        <div class="sbpills">
+            <div class="sbpill sbtool">
+                <div class="sbpill-label">Current Tool</div>
+                <div class="sbpill-value">@(s.CurrentTool?.ToString() ?? "—")</div>
+            </div>
+            <div class="sbpill sbrpm">
+                <div class="sbpill-label">RPM</div>
+                <div class="sbpill-value">@(s.LastSpindleSpeed is double rpm ? rpm.ToString("0") : "—")</div>
+            </div>
+        </div>
     </div>
 </div>
 
