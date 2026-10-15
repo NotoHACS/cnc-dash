@@ -38,7 +38,6 @@ public class MachineStatus
     // window hours); falls back to pace math (parts / ExpectedParts) when no
     // theoretical rate is learned yet
     public double PercentOfExpected { get; set; }
-    public double PercentOfExpected { get; set; }
 
     // which signal produced PartsThisShift: partcount pulse | cutting time est |
     // manual seed — exposed so the dashboard/API can show provenance
