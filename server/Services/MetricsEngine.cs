@@ -249,7 +249,11 @@ public class MetricsEngine
                 if (pulseTss.Count > 0)
                 {
                     var dt = (row.TsUtc - pulseTss[^1]).TotalSeconds;
-                    if (dt > 5 && dt < 24 * 3600)
+                    // tight window: 30s..8h — pulses are per-cycle or per-batch
+                    // (cnc12: ~32min batches). Idles longer than that (overnight
+                    // gaps, machine off) are NOT cycle samples; keeping them
+                    // poisoned the median (8658s learned from 475min outliers).
+                    if (dt > 30 && dt < 8 * 3600)
                         cycleSeconds.Add(dt);
                 }
                 flagPulses++;
