@@ -232,6 +232,27 @@ public class MetricsEngine
             : 0;
 
         // ---- parts & cycle learning -------------------------------------------------
+        // Cycle-var (VC3 on cnc12) change collection runs FIRST: the var change
+        // cadence is the cycle truth for var-tracked machines, and its interval
+        // list feeds the same learning-median as pulses do below.
+        var cycleVarChanges = new List<DateTime>();
+        if (cfg.CycleVarIndex > 0)
+        {
+            var prefix = cfg.CycleVarIndex.ToString() + "=";
+            long? prevV = null;
+            foreach (var r in samples.Where(s => s.DataItemId == "Mp1CommonVariable" && s.CommonVars != null)
+                         .OrderBy(r => r.TsUtc))
+            {
+                var v = CommonVarValueLong(r.CommonVars!, prefix);
+                if (v.HasValue)
+                {
+                    if (prevV.HasValue && v.Value != prevV.Value)
+                        cycleVarChanges.Add(r.TsUtc);
+                    prevV = v.Value;
+                }
+            }
+        }
+
         // Mppartcount is a 0/1 cycle-complete pulse (NOT cumulative): each 0->1
         // transition completes one cycle → PartsPerCycle parts. Cycle learning uses
         // the pulse cadence (the flag is a change-only stream, so pulse-to-pulse
@@ -265,7 +286,19 @@ public class MetricsEngine
         // parts from pulses: one completed cycle each → PartsPerCycle parts
         long flagParts = flagPulses * cfg.PartsPerCycle;
 
-        // learned cycle: rolling median of pulse cadence, blended with seeded expectation
+        // learned cycle: VC3-configured machines learn from var-change cadence
+        // (the batch length); pulse cadence only for machines without the var.
+        if (cfg.CycleVarIndex > 0 && cycleVarChanges.Count > 1)
+        {
+            cycleSeconds.Clear();
+            var prev = cycleVarChanges[0];
+            foreach (var ts2 in cycleVarChanges.Skip(1))
+            {
+                var dt = (ts2 - prev).TotalSeconds;
+                if (dt > 30 && dt < 8 * 3600) cycleSeconds.Add(dt);
+                prev = ts2;
+            }
+        }
         if (cycleSeconds.Count > 0)
         {
             cycleSeconds.Sort();
@@ -379,25 +412,18 @@ public class MetricsEngine
             : null;
         status.QuotaParts = cfg.QuotaParts;
 
-        // cycle anchor var (cnc12: VC3 = pallet/table id 1<->2, brief 0 during
-        // the swap). A value CHANGE marks the batch boundary — the machine's own
-        // truth, riding in the CommonVars map we already store. 0 = disabled.
-        DateTime? cycleVarChangeTs = null;
+        // cycle anchor var (cnc12: VC3 = pallet/table id 1<->2). User directive:
+        // VC3 IS the cycle truth. Collection happens up in the learning block
+        // (cycleVarChanges); here we consume: latest change = anchor, and the
+        // count-up runs from there.
+        DateTime? cycleVarChangeTs = cycleVarChanges.Count > 0 ? cycleVarChanges[^1] : (DateTime?)null;
+        long? cycleVarValue = null;
         if (cfg.CycleVarIndex > 0)
         {
             var prefix = cfg.CycleVarIndex.ToString() + "=";
-            long? prevCycleVar = null;
-            foreach (var r in samples.Where(s => s.DataItemId == "Mp1CommonVariable" && s.CommonVars != null)
-                         .OrderBy(r => r.TsUtc))
-            {
-                var v = CommonVarValueLong(r.CommonVars!, prefix);
-                if (v.HasValue)
-                {
-                    if (prevCycleVar.HasValue && v.Value != prevCycleVar.Value)
-                        cycleVarChangeTs = r.TsUtc;
-                    prevCycleVar = v.Value;
-                }
-            }
+            var lastCvRow = samples.LastOrDefault(s => s.DataItemId == "Mp1CommonVariable" && s.CommonVars != null);
+            if (lastCvRow?.CommonVars is string cvs)
+                cycleVarValue = CommonVarValueLong(cvs, prefix);
         }
 
         // cycle progress anchor: cutting time at the last cycle start. Anchor
@@ -414,11 +440,27 @@ public class MetricsEngine
         // VC70 was also rejected: flickers 0/2/0 at resets, fires at odd offsets.
         // Cutting time interpolated at the anchor timestamp: tcut = c0 + (c1-c0)
         // * (a - t0)/(t1 - t0) between surrounding rows.
-        double? cycleStartCut = null;
+        // cycle progress: VC3-configured machines track WALL CLOCK from the last
+        // var change ("reset on change, count up until it changes back"). The
+        // cutting-time interpolation path only applies when no cycle var exists.
+        if (cycleVarChangeTs != null)
+        {
+            status.CurrentCycleSeconds = Math.Max(0, (nowUtc - cycleVarChangeTs.Value).TotalSeconds);
+        }
+        else if (cfg.CycleVarIndex > 0)
+        {
+            // var configured but no change seen in this shift yet — count from
+            // the first sample we have (start of visible history), not null
+            var firstTs = samples.FirstOrDefault()?.TsUtc;
+            if (firstTs != null)
+                status.CurrentCycleSeconds = Math.Max(0, (nowUtc - firstTs.Value).TotalSeconds);
+        }
+        else
+        {
+            double? cycleStartCut = null;
         if (tcutRows.Count > 0)
         {
-            DateTime? anchorTs = cycleVarChangeTs;
-            if (anchorTs == null) anchorTs = tallyStepTs;
+            DateTime? anchorTs = tallyStepTs;
             if (anchorTs == null && pulseTss.Count > 0)
                 anchorTs = pulseTss[^1];
             if (anchorTs != null)
@@ -445,13 +487,12 @@ public class MetricsEngine
         var tcutLatest = tcutRows.LastOrDefault()?.TotalCuttingTime;
         if (tcutLatest != null && cycleStartCut != null)
             status.CurrentCycleSeconds = Math.Max(0, tcutLatest.Value - cycleStartCut.Value);
-        else if (cycleVarChangeTs != null)
-            status.CurrentCycleSeconds = Math.Max(0, (nowUtc - cycleVarChangeTs.Value).TotalSeconds);
         else if (tallyStepTs != null)
             status.CurrentCycleSeconds = Math.Max(0, (nowUtc - tallyStepTs.Value).TotalSeconds);
         else if (pulseTss.Count > 0)
             status.CurrentCycleSeconds = Math.Max(0, (nowUtc - pulseTss[^1]).TotalSeconds);
         // else: leave null → view renders plain "in cycle" (nothing to anchor to)
+        }
 
         // ---- status color -----------------------------------------------------------
         if (!status.Online)
