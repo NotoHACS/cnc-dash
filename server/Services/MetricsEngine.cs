@@ -491,18 +491,19 @@ public class MetricsEngine
                     cyclesLeft = Math.Max(0, t.LifeValue.Value);
             }
 
-            // "used/set" per MTConnect ToolLife semantics when the life is count
-            // based and the initial budget is known: UP counts up to initial
-            // (used = value); DOWN counts down to 0 (used = initial - value,
-            // clamped at 0 so a fresh DOWN tool reads used = 0). Set = LifeInitial.
-            // Missing budget or percent-type life → null.
+            // "left/set" for the Cycles-left column when the life is count based
+            // and the initial budget is known: remaining first, set size second.
+            // DOWN direction (Okuma default) counts LifeValue down to 0, so
+            // remaining = LifeValue; UP counts up toward initial, so remaining =
+            // initial - value. (NOT MTConnect used/set: that read 12/12 for a
+            // tool with 0 cycles left.) Missing budget or percent-type life → null.
             string? lifeUsedSet = null;
             if (t.LifeValue.HasValue && t.LifeInitial is > 0 && lt is "PARTS" or "PART_COUNT")
             {
-                var used = dirUp
-                    ? t.LifeValue.Value
-                    : Math.Max(0, t.LifeInitial.Value - t.LifeValue.Value);
-                lifeUsedSet = $"{used:0}/{t.LifeInitial.Value:0}";
+                var left = dirUp
+                    ? Math.Max(0, t.LifeInitial.Value - t.LifeValue.Value)
+                    : Math.Max(0, t.LifeValue.Value);
+                lifeUsedSet = $"{left:0}/{t.LifeInitial.Value:0}";
             }
 
             return new ToolStatus
