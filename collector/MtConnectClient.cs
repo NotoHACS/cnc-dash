@@ -58,6 +58,31 @@ public class MtConnectClient
             AssetChangedTrigger = false,
         };
 
+        // agent bookkeeping (MTConnectStreams Header): instanceId identifies the
+        // agent's in-memory instance; first/nextSequence bound the replay window.
+        // Crossing either boundary means the cached change-detection state is
+        // stale — clear it so the remaining elements (and the next poll) re-post
+        // a full snapshot.
+        lastValues.TryGetValue("instanceId", out var prevInstStr);
+        ulong.TryParse(prevInstStr, out var prevInst);
+        ulong firstSeq = 0, nextSeq = 0;
+        string? instAttr = null;
+        var header = doc.Root?.Element(Ns + "Header");
+        if (header != null)
+        {
+            instAttr = header.Attribute("instanceId")?.Value;
+            ulong.TryParse(instAttr, out var curInst);
+            ulong.TryParse(header.Attribute("firstSequence")?.Value, out firstSeq);
+            ulong.TryParse(header.Attribute("nextSequence")?.Value, out nextSeq);
+
+            if (curInst > 0 && prevInst > 0 && curInst != prevInst)
+            {
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] agent restart detected (instanceId {prevInst} -> {curInst}) - resnapshotting");
+                lastValues.Clear();
+            }
+        }
+
+        var seqOutageLogged = false;
         var elements = doc.Descendants()
             .Where(e => e.Attribute("dataItemId") != null && e.Attribute("timestamp") != null);
 
@@ -69,11 +94,24 @@ public class MtConnectClient
             var seqOk = long.TryParse(e.Attribute("sequence")!.Value, out var seq);
             if (!seqOk) continue;
 
+            if ((nextSeq > 0 && (ulong)seq >= nextSeq) || (firstSeq > 0 && (ulong)seq < firstSeq))
+            {
+                // stale/unknown instance: still post this value (it is current
+                // reality), but reset the cache so re-detection starts clean
+                if (!seqOutageLogged)
+                {
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] sequence {seq} outside agent window [{firstSeq}, {nextSeq}) - resnapshotting");
+                    seqOutageLogged = true;
+                    lastValues.Clear();
+                }
+            }
+
             var isAssetTrigger = cfg.AssetTriggerItems.Any(t =>
                 di.Contains(t, StringComparison.OrdinalIgnoreCase));
             if (isAssetTrigger)
             {
                 result.AssetChangedTrigger = true;
+                result.ChangedAssetId = e.Value;
                 lastValues[di] = e.Value;
                 continue;
             }
@@ -90,6 +128,12 @@ public class MtConnectClient
             result.Samples.Add(sample);
         }
 
+        // persist agent bookkeeping alongside the last values (state.json)
+        if (instAttr != null && ulong.TryParse(instAttr, out var instOut))
+            lastValues["instanceId"] = instOut.ToString();
+        if (nextSeq > 0)
+            lastValues["nextSequence"] = nextSeq.ToString();
+
         // Execution/mode context travels on the sample rows that carry them
         // (server merges by timestamp), so events map onto: exec + mode + fmode.
         return result;
@@ -100,6 +144,9 @@ public class PollResult
 {
     public List<SampleRow> Samples { get; set; } = new();
     public bool AssetChangedTrigger { get; set; }
+
+    // assetId from the asset-change trigger (e.g. asset_chg) for targeted fetch
+    public string? ChangedAssetId { get; set; }
 }
 
 public class SampleRow

@@ -66,7 +66,27 @@ public static class Program
                         });
 
                         if (poll.AssetChangedTrigger)
-                            lastAssetFetch = DateTime.MinValue; // force refetch next tick
+                        {
+                            // targeted fetch of the changed asset (server upserts
+                            // by assetId); full refetch as fallback
+                            var targetId = poll.ChangedAssetId?.Trim();
+                            ToolRow? targeted = null;
+                            if (!string.IsNullOrWhiteSpace(targetId) &&
+                                !targetId.Equals("UNAVAILABLE", StringComparison.OrdinalIgnoreCase))
+                                targeted = await assets.FetchOneAsync(targetId);
+
+                            if (targeted != null)
+                            {
+                                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [debug] asset change: targeted fetch {targetId}");
+                                pendingTools.Add(targeted);
+                                lastAssetFetch = now;
+                            }
+                            else
+                            {
+                                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [debug] asset change: full refetch fallback");
+                                lastAssetFetch = DateTime.MinValue;
+                            }
+                        }
 
                         SaveState(statePath, lastValues);
                     }
