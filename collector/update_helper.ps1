@@ -8,9 +8,6 @@ param(
     [Parameter(Mandatory = $true)][string]$ServiceName
 )
 
-$ErrorActionPreference = "Stop"
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
 $ExeDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Log = Join-Path $ExeDir "update.log"
 $VersionFile = Join-Path $ExeDir "version.txt"
@@ -21,6 +18,22 @@ function Log($msg) {
     $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg"
     Write-Host $line
     Add-Content -Path $Log -Value $line
+}
+
+$ErrorActionPreference = "Stop"
+
+# TLS 1.2/1.3 before any web request; PS 5.1 on old .NET Fx may lack the
+# Tls13 enum value — degrade to 1.2, never abort the run from down here
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+    Log "TLS: 1.2+1.3 enabled"
+} catch {
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Log "TLS: 1.2 enabled (1.3 not supported by this .NET build)"
+    } catch {
+        Log "WARNING: TLS hardening failed: $($_.Exception.Message)"
+    }
 }
 
 function Stop-ServiceSafe {
@@ -93,42 +106,62 @@ function Swap-File($stageDir, $name) {
 
 Log "=== update run ==="
 Log "repo=$Repo service=$ServiceName"
+Log "architecture: $Rid; will download $ZipName"
 
 # 1. latest release
 try {
-    $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ "User-Agent" = "cncdash-collector" }
+    Log "step 1: querying latest release (github api)"
+    $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ "User-Agent" = "cncdash-collector-update" }
 } catch {
     Log "ERROR: cannot query releases: $($_.Exception.Message)"; exit 1
 }
 $tag = $rel.tag_name
-Log "latest release: $tag"
 
 $current = "dev"
 if (Test-Path $VersionFile) { $current = (Get-Content $VersionFile -Raw).Trim() }
-if ($current -eq $tag) { Log "already up to date ($current). nothing to do."; exit 0 }
+Log "installed version: $current; latest release: $tag"
+if ($current -eq $tag) { Log "already up to date; nothing to do."; exit 0 }
 
 # 2. locate download assets
+Log "step 2: locating release assets"
 $zipAsset = $rel.assets | Where-Object { $_.name -eq $ZipName } | Select-Object -First 1
 $shaAsset = $rel.assets | Where-Object { $_.name -eq "$ZipName.sha256" } | Select-Object -First 1
 if (-not $zipAsset) { Log "ERROR: asset $ZipName not found in release $tag"; exit 1 }
+if (-not $shaAsset) { Log "NOTE: no sha256 asset in release $tag; verification will be skipped only if fetch fails" }
+Log "asset found: $($zipAsset.name) ($([math]::Round($zipAsset.size / 1MB, 1)) MB)"
 
 $tmp = Join-Path $env:TEMP "cncdash-update-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $tmp | Out-Null
 
-# 3. download + checksum verify
+# 3. download (retry once) + checksum verify
 try {
+    Log "step 3: download + verify"
     $zipPath = Join-Path $tmp $ZipName
-    Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $zipPath -UseBasicParsing
+    $downloaded = $false
+    for ($attempt = 1; $attempt -le 2 -and -not $downloaded; $attempt++) {
+        try {
+            Log "downloading $ZipName (attempt $attempt/2)..."
+            Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $zipPath -UseBasicParsing -UserAgent "cncdash-collector-update"
+            $downloaded = $true
+        } catch {
+            $dlErr = $_.Exception.Message
+            if ($attempt -eq 1) { Log "WARNING: download failed ($dlErr); retrying once" }
+            else { throw "download failed after retry: $dlErr" }
+        }
+    }
+
     if ($shaAsset) {
-        $expected = ((Invoke-WebRequest -Uri $shaAsset.browser_download_url -UseBasicParsing).Content.Trim().Split(" ")[0]).ToLower()
+        Log "verifying sha256..."
+        $expected = ((Invoke-WebRequest -Uri $shaAsset.browser_download_url -UseBasicParsing -UserAgent "cncdash-collector-update").Content.Trim().Split(" ")[0]).ToLower()
         $actual = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
-        if ($expected -ne $actual) { throw "checksum mismatch: expected $expected got $actual" }
+        if ($expected -ne $actual) { throw "checksum mismatch: expected $expected got $actual ( refusing swap )" }
         Log "sha256 verified"
     } else {
-        Log "WARNING: no checksum asset; skipping verification"
+        Log "WARNING: no checksum asset in release; skipping verification"
     }
 
     # 4. extract to staging, then re-inject local config/state
+    Log "step 4: extracting to staging..."
     $stage = Join-Path $tmp "stage"
     Expand-Archive -Path $zipPath -DestinationPath $stage -Force
     foreach ($keep in @("config_local.json", "state.json", "update.log")) {
@@ -143,21 +176,28 @@ try {
     $hadBackup = $false
     if (Stop-ServiceSafe) {
         $hadBackup = $true
+        Log "step 5: service $ServiceName stopped; waiting for collector exit..."
         if (-not (Wait-CollectorExit)) { throw "collector process would not exit" }
+        Log "backing up $($files.Count) files..."
         foreach ($f in $files) {
             New-Item -ItemType Directory -Path $backup -Force | Out-Null
             if (-not (Copy-WithRetry $f.FullName (Join-Path $backup $f.Name))) { throw "backup copy failed: $($f.Name)" }
         }
+        Log "swapping files..."
         foreach ($f in $files) {
             if (-not (Swap-File $stage $f.Name)) { throw "copy failed: $($f.Name)" }
         }
+        Log "starting service $ServiceName..."
         Start-ServiceSafe
         Start-Sleep -Seconds 5
         if (-not (ServiceRunning)) { throw "service $ServiceName failed to start after update" }
+        Log "service running: ok"
     } else {
         # no service: the collector is likely running manually in a console —
         # waiting for / forcing exit is required or the exe swap fails
+        Log "no service installed; stopping the running collector (console window will close)..."
         if (-not (Wait-CollectorExit)) { throw "collector process would not exit (close the collector console and retry)" }
+        Log "swapping files..."
         foreach ($nf in Get-ChildItem $stage -File) {
             if (-not (Swap-File $stage $nf.Name)) { throw "copy failed: $($nf.Name)" }
         }
@@ -165,7 +205,11 @@ try {
     }
 
     Set-Content -Path $VersionFile -Value $tag
-    Log "updated to $tag OK"
+    Log "verifying version.txt after swap..."
+    $written = ""
+    try { $written = (Get-Content $VersionFile -Raw).Trim() } catch { $written = "" }
+    if ($written -ne $tag) { throw "version.txt verification failed after swap (wrote '$written', expected '$tag')" }
+    Log "installed $current -> $tag (verified)"
 } catch {
     Log "ERROR: $($_.Exception.Message)"
     if ($hadBackup) {
