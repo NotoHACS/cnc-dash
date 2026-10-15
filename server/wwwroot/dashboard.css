@@ -44,9 +44,9 @@ a { color: #58a6ff; text-decoration: none; }
 .statusbox .sbtool { background: #1a3350; border: 1px solid #58a6ff66; }
 .statusbox .sbtool .sbpill-label { color: #9ecbff; opacity: .8; font-size: 11px; }
 .statusbox .sbtool .sbpill-value { color: #9ecbff; font-size: 20px; font-weight: 700; }
-.statusbox .sbrpm { background: #12351d; border: 1px solid #7ee2a866; }
-.statusbox .sbrpm .sbpill-label { color: #7ee2a8; opacity: .8; font-size: 11px; }
-.statusbox .sbrpm .sbpill-value { color: #7ee2a8; font-size: 20px; font-weight: 700; }
+.statusbox .sbrpm { background: #2d1f47; border: 1px solid #a875ff66; }
+.statusbox .sbrpm .sbpill-label { color: #c9b3ff; opacity: .8; font-size: 11px; }
+.statusbox .sbrpm .sbpill-value { color: #c9b3ff; font-size: 20px; font-weight: 700; }
 .pill {
     display: inline-block; padding: 2px 10px; border-radius: 99px;
     background: #1f2530; color: var(--muted); font-size: 12px;
