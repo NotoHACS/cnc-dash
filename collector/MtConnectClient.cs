@@ -415,58 +415,32 @@ public class SampleRow
     public static SampleRow? From(string di, DateTime ts, long seq, XElement e)
     {
         var row = new SampleRow { ts = ts, di = di, seq = seq };
-        switch (di)
-        {
-            case "MS1speed":
-                if (double.TryParse(e.Value, out var s)) row.speed = s; else return null;
-                break;
-            case "Mppartcount":
-                if (long.TryParse(e.Value, out var c)) row.count = c; else return null;
-                break;
-            case "Mpprogram":
-                row.prog = e.Value; break;
-            case "Mp1CurrentTool":
-                if (int.TryParse(e.Value, out var t)) row.tool = t; else return null;
-                break;
-            case "Mpexecution":
-                row.exec = e.Value; break;
-            case "Mpmode":
-                row.mode = e.Value; break;
-            case "Mfmode":
-                row.fmode = e.Value; break;
-            case "Mp1SpindleRunTime":
-                if (double.TryParse(e.Value, out var r)) row.runtime = r; else return null;
-                break;
-            case "Mp1TotalCuttingTime":
-                if (double.TryParse(e.Value, out var tc)) row.totalCuttingTime = tc; else return null;
-                break;
-            case "Mp1Fcmd":
-                if (double.TryParse(e.Value, out var f)) row.feedCmd = f; else return null;
-                break;
-            case "MX1actm":
-                if (double.TryParse(e.Value, out var x)) row.xAct = x; else return null;
-                break;
-            case "MY1actm":
-                if (double.TryParse(e.Value, out var y)) row.yAct = y; else return null;
-                break;
-            case "MZ1actm":
-                if (double.TryParse(e.Value, out var z)) row.zAct = z; else return null;
-                break;
-            case "Mp1line":
-                if (long.TryParse(e.Value, out var ln)) row.line = ln; else return null;
-                break;
-            case "Mp1block":
-                row.block = e.Value; break;
-            case "Mp1CommonVariable":
-                var cv = ParseCommonVars(e.Value);
-                if (cv == null) return null;
-                row.commonVars = cv.Value.map;
-                row.stationsOn = cv.Value.stations;
-                row.partsTally = cv.Value.tally;
-                break;
-            default:
-                return null;
-        }
+
+        // dataItemId prefixes vary per agent build: newer Okuma agents use
+        // Mp1*/MS1*/MX1* prefixes, older 1.3-style agents (CNC13's) prefix with
+        // the machine code ("C13S1speed", "C13X1actm", ...). Match by SUFFIX so
+        // both shapes map onto the same columns; the raw di stays per-row.
+        // NOTE: value types differ per item (double vs long vs text) and the
+        // semantic of e.g. "*S1speed" is stable across agents.
+        bool Has(string suffix) => di.EndsWith(suffix, StringComparison.OrdinalIgnoreCase);
+        if (Has("S1speed") || Has("SpindleSpeed")) { if (!double.TryParse(e.Value, out var s)) return null; row.speed = s; }
+        else if (Has("partcount")) { if (!long.TryParse(e.Value, out var c)) return null; row.count = c; }
+        else if (Has("program")) { row.prog = e.Value; }
+        else if (Has("CurrentTool")) { if (!int.TryParse(e.Value, out var t)) return null; row.tool = t; }
+        else if (Has("execution")) { row.exec = e.Value; }
+        else if (Has("controllermode")) { row.mode = e.Value; }
+        else if (di.Equals("Mpmode", StringComparison.OrdinalIgnoreCase)) { row.mode = e.Value; }
+        else if (Has("fmode") || di.Equals("Mfmode", StringComparison.OrdinalIgnoreCase)) { row.fmode = e.Value; }
+        else if (Has("SpindleRunTime")) { if (!double.TryParse(e.Value, out var r)) return null; row.runtime = r; }
+        else if (Has("TotalCuttingTime")) { if (!double.TryParse(e.Value, out var tc)) return null; row.totalCuttingTime = tc; }
+        else if (di.Equals("Mp1Fcmd", StringComparison.OrdinalIgnoreCase)) { if (!double.TryParse(e.Value, out var f)) return null; row.feedCmd = f; }
+        else if (Has("X1actm")) { if (!double.TryParse(e.Value, out var x)) return null; row.xAct = x; }
+        else if (Has("Y1actm")) { if (!double.TryParse(e.Value, out var y)) return null; row.yAct = y; }
+        else if (Has("Z1actm")) { if (!double.TryParse(e.Value, out var z)) return null; row.zAct = z; }
+        else if (Has("Mp1line") || Has("LineId")) { if (!long.TryParse(e.Value, out var ln)) return null; row.line = ln; }
+        else if (Has("block")) { row.block = e.Value; }
+        else if (Has("CommonVariable")) { var cv = ParseCommonVars(e.Value); if (cv == null) return null; row.commonVars = cv.Value.map; row.stationsOn = cv.Value.stations; row.partsTally = cv.Value.tally; }
+        else return null;
         return row;
     }
 
