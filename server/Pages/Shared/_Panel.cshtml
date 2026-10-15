@@ -45,14 +45,11 @@
         {
             @if (s.LearnedCycleSeconds is double target && target > 0)
             {
-                var pct = Math.Clamp(cs / target * 100, 0, 100);
                 <div class="big">@Mmss(cs) / @Mmss(target)</div>
-                <div class="sub">@pct.ToString("0")% of cycle</div>
             }
             else
             {
                 <div class="big">@Mmss(cs)</div>
-                <div class="sub">elapsed only</div>
             }
         }
         else
@@ -73,7 +70,7 @@
     <div class="card">
         <div class="label">Parts this shift</div>
         <div class="big">@s.PartsThisShift</div>
-        <div class="sub">@s.ExpectedParts expected by now &middot; @s.PartsSource</div>
+        <div class="sub">@s.ExpectedParts expected by now</div>
     </div>
     <div class="card">
         <div class="label">Efficiency</div>
