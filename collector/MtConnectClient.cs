@@ -60,10 +60,11 @@ public class MtConnectClient
         };
 
         // agent bookkeeping (MTConnectStreams Header): instanceId identifies the
-        // agent's in-memory instance; first/nextSequence bound the replay window.
-        // Crossing either boundary means the cached change-detection state is
-        // stale — clear it so the remaining elements (and the next poll) re-post
-        // a full snapshot.
+        // agent's in-memory instance; first/nextSequence bound the /sample replay
+        // window (persisted for the future streamer; NOT used to vet /current
+        // item sequences — those may legitimately sit below firstSequence). An
+        // instanceId change means the cached change-detection state is stale —
+        // clear it so this poll re-posts a full snapshot.
         lastValues.TryGetValue("instanceId", out var prevInstStr);
         ulong.TryParse(prevInstStr, out var prevInst);
         ulong firstSeq = 0, nextSeq = 0;
@@ -83,7 +84,6 @@ public class MtConnectClient
             }
         }
 
-        var seqOutageLogged = false;
         var elements = doc.Descendants()
             .Where(e => e.Attribute("dataItemId") != null);
 
@@ -107,28 +107,20 @@ public class MtConnectClient
             var sample = SampleRow.From(di, ts, 0, e);
             if (sample is null) continue;
 
-            // sequence: agent-provided when present. Okuma extension elements
-            // (e.g. Mp1CommonVariable, subType x:COMMON) may omit timestamp/
-            // sequence entirely — for those, fall back to a stable hash of the
-            // payload so the server's (di, seq) dedupe key still changes when
-            // the value does.
+            // sequence: agent-provided when present; treat it as-is. /current
+            // semantics: an item's sequence marks WHEN THAT VALUE WAS SET and
+            // may legitimately sit below the agent's sliding buffer window
+            // (values captured long ago) — do NOT resnapshot on per-item
+            // membership; agent restarts are signaled by the Header instanceId
+            // (handled above the loop). Okuma extension elements
+            // (e.g. Mp1CommonVariable, subType x:COMMON) may omit the
+            // attribute entirely — fall back to a stable hash of the payload
+            // so the server's (di, seq) dedupe key still changes when the
+            // value does.
             var seqStr = e.Attribute("sequence")?.Value;
             if (seqStr != null && long.TryParse(seqStr, out var agentSeq))
             {
                 sample.seq = agentSeq;
-
-                if ((nextSeq > 0 && (ulong)agentSeq >= nextSeq) || (firstSeq > 0 && (ulong)agentSeq < firstSeq))
-                {
-                    // stale/unknown instance: still post this value (it is
-                    // current reality), but reset the cache so re-detection
-                    // starts clean
-                    if (!seqOutageLogged)
-                    {
-                        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] sequence {agentSeq} outside agent window [{firstSeq}, {nextSeq}) - resnapshotting");
-                        seqOutageLogged = true;
-                        lastValues.Clear();
-                    }
-                }
             }
             else
             {
@@ -152,9 +144,12 @@ public class MtConnectClient
             }
         }
 
-        // persist agent bookkeeping alongside the last values (state.json)
+        // persist agent bookkeeping alongside the last values (state.json) —
+        // refreshed from THIS response's Header on every successful poll
         if (instAttr != null && ulong.TryParse(instAttr, out var instOut))
             lastValues["instanceId"] = instOut.ToString();
+        if (firstSeq > 0)
+            lastValues["firstSequence"] = firstSeq.ToString();
         if (nextSeq > 0)
             lastValues["nextSequence"] = nextSeq.ToString();
 
