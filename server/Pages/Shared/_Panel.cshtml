@@ -73,7 +73,7 @@
     <div class="card">
         <div class="label">Parts this shift</div>
         <div class="big">@s.PartsThisShift</div>
-        <div class="sub">@s.ExpectedParts expected by shift end</div>
+        <div class="sub">@s.ExpectedParts expected by now &middot; @s.PartsSource</div>
     </div>
     <div class="card">
         <div class="label">Efficiency</div>
@@ -100,7 +100,6 @@
     <div class="card">
         <div class="label">Spindle uptime</div>
         <div class="big">@s.SpindleUptimePercent.ToString("0")%</div>
-        <div class="sub">@(s.SpindleRunning ? $"spindle ran {s.SpindleUptimePercent:0}% of shift so far" : "spindle stopped")</div>
     </div>
     <div class="card">
         <div class="label">Expired tools</div>

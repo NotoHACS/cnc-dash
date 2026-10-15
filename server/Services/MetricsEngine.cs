@@ -360,30 +360,38 @@ public class MetricsEngine
             : null;
         status.QuotaParts = cfg.QuotaParts;
 
-        // cycle progress anchor: cutting time at the last cycle start (latest 0->1
-        // pulse or a program-line wrap, whichever is later) — elapsed-in-cycle is
-        // cutting seconds, which excludes probe pauses. Mp1line dropping = restart.
-        var lineRows = samples.Where(s => s.DataItemId == "Mp1line" && s.Line != null).OrderBy(r => r.TsUtc).ToList();
-        DateTime? resetEvent = pulseTss.Count > 0 ? pulseTss[^1] : null;
-        long? prevLine = null;
-        foreach (var row in lineRows)
-        {
-            var cur = row.Line!.Value;
-            if (prevLine != null && cur < prevLine && (resetEvent == null || row.TsUtc > resetEvent))
-                resetEvent = row.TsUtc;
-            prevLine = cur;
-        }
+        // cycle progress anchor: cutting time at the last cycle start. The anchor
+        // is the latest 0->1 Mppartcount pulse — that is the machine's own
+        // cycle-complete flag and the only trustworthy restart marker. Mp1line
+        // must NEVER be used for this: Okuma subprograms bounce the line number
+        // constantly mid-cycle (main 1050 calling sub 1..N, and call/return drops
+        // like 155->4), and treating any decrease as a restart dragged the anchor
+        // seconds into the past over and over — progress visibly reset mid-cycle.
+        // Cutting time interpolated at the pulse timestamp: tcut = c0 + (c1-c0) *
+        // (pulse - t0)/(t1 - t0) between the surrounding cutting-time rows. The
+        // pulse lags true cycle start (fires at cycle END), so the elapsed-in-cycle
+        // value reads low by up to one learned cycle — bounded and stable beats
+        // exact-but-resetting.
         double? cycleStartCut = null;
         if (tcutRows.Count > 0)
         {
-            if (resetEvent != null)
+            if (pulseTss.Count > 0)
             {
-                var anchor = tcutRows.OrderBy(r => Math.Abs((r.TsUtc - resetEvent.Value).TotalSeconds)).First();
-                if (Math.Abs((anchor.TsUtc - resetEvent.Value).TotalSeconds) <= 120)
-                    cycleStartCut = anchor.TotalCuttingTime;
+                var pulseTs = pulseTss[^1];
+                DateTime t0 = tcutShiftStart ?? tcutRows[0].TsUtc, t1 = t0;
+                double c0 = tcutShiftStart ?? tcutRows[0].TotalCuttingTime ?? 0, c1 = c0;
+                foreach (var r in tcutRows)
+                {
+                    if (r.TsUtc <= pulseTs) { t0 = r.TsUtc; c0 = r.TotalCuttingTime!.Value; }
+                    else { t1 = r.TsUtc; c1 = r.TotalCuttingTime!.Value; break; }
+                }
+                var span = (t1 - t0).TotalSeconds;
+                cycleStartCut = span > 0
+                    ? c0 + (c1 - c0) * (pulseTs - t0).TotalSeconds / span
+                    : c0;
             }
             else
-                cycleStartCut = tcutShiftStart; // no pulse/wrap yet this shift: assume shift start
+                cycleStartCut = tcutShiftStart; // no pulse yet this shift: assume shift start
         }
         var tcutLatest = tcutRows.LastOrDefault()?.TotalCuttingTime;
         if (tcutLatest != null && cycleStartCut != null)
