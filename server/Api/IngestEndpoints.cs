@@ -69,6 +69,15 @@ public class IngestSample
 
     [JsonPropertyName("block")]
     public string? Block { get; set; }
+
+    [JsonPropertyName("commonVars")]
+    public string? CommonVars { get; set; }
+
+    [JsonPropertyName("stationsOn")]
+    public int? StationsOn { get; set; }
+
+    [JsonPropertyName("partsTally")]
+    public double? PartsTally { get; set; }
 }
 
 public class IngestTool
@@ -202,6 +211,9 @@ public static class IngestEndpoints
                     ZAct = s.ZAct,
                     Line = s.Line,
                     Block = s.Block,
+                    CommonVars = s.CommonVars,
+                    StationsOn = s.StationsOn,
+                    PartsTally = s.PartsTally,
                 });
                 result.SamplesAccepted++;
             }

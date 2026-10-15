@@ -67,7 +67,14 @@
     <div class="card">
         <div class="label">Parts this shift</div>
         <div class="big">@s.PartsThisShift</div>
-        <div class="sub">@s.ExpectedParts expected by shift end</div>
+        @if (s.StationsOn is int stations)
+        {
+            <div class="sub">@stations stations on</div>
+        }
+        else
+        {
+            <div class="sub">@s.ExpectedParts expected by shift end</div>
+        }
     </div>
     <div class="card">
         <div class="label">% of target</div>

@@ -51,6 +51,13 @@ public class Sample
     // a program restart (new cycle).
     public long? Line { get; set; }
     public string? Block { get; set; }
+
+    // Mp1CommonVariable [subType COMMON]: the full Okuma common-variable map as a
+    // compact "N=v;N=v" string (4000-char cap); StationsOn = VC40, PartsTally =
+    // VC41 (cumulative parts tally — primary parts source; resets on job change).
+    public string? CommonVars { get; set; }
+    public int? StationsOn { get; set; }
+    public double? PartsTally { get; set; }
 }
 
 public class ToolAsset

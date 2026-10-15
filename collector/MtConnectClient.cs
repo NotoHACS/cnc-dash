@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -121,6 +122,9 @@ public class SampleRow
     public double? zAct { get; set; }
     public long? line { get; set; }
     public string? block { get; set; }
+    public string? commonVars { get; set; }
+    public int? stationsOn { get; set; }
+    public double? partsTally { get; set; }
 
     public static SampleRow? From(string di, DateTime ts, long seq, XElement e)
     {
@@ -167,6 +171,13 @@ public class SampleRow
                 break;
             case "Mp1block":
                 row.block = e.Value; break;
+            case "Mp1CommonVariable":
+                var cv = ParseCommonVars(e.Value);
+                if (cv == null) return null;
+                row.commonVars = cv.Value.map;
+                row.stationsOn = cv.Value.stations;
+                row.partsTally = cv.Value.tally;
+                break;
             default:
                 return null;
         }
@@ -191,7 +202,39 @@ public class SampleRow
         if (zAct.HasValue) return $"z:{zAct.Value:0.#}";
         if (line.HasValue) return $"line:{line.Value}";
         if (block != null) return $"block:{block}";
+        if (commonVars != null) return $"cvars:{commonVars}";
         return "";
+    }
+
+    /// <summary>
+    /// Mp1CommonVariable carries all Okuma common variables as one space-separated
+    /// text: "N:value N:value ..." (N = VC number). Values may be '&#x221E;'
+    /// (infinity, unused) or otherwise unparsable — those tokens are ignored.
+    /// Returns the compact map ("40=3;41=12;65=5733", truncated to 4000 chars)
+    /// plus dedicated convenience values for VC40 (stations on) and VC41 (parts tally).
+    /// </summary>
+    private static (string map, int? stations, double? tally)? ParseCommonVars(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var sb = new StringBuilder();
+        int? stations = null;
+        double? tally = null;
+        foreach (var tok in raw.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var ci = tok.IndexOf(':');
+            if (ci <= 0) continue;
+            if (!int.TryParse(tok[..ci], NumberStyles.Integer, CultureInfo.InvariantCulture, out var idx)) continue;
+            var rawVal = tok[(ci + 1)..];
+            if (!double.TryParse(rawVal, NumberStyles.Any, CultureInfo.InvariantCulture, out var val)) continue;
+            if (sb.Length > 0) sb.Append(';');
+            sb.Append(idx).Append('=').Append(val.ToString("0.####", CultureInfo.InvariantCulture));
+            if (idx == 40) stations = (int)val;
+            if (idx == 41) tally = val;
+        }
+        if (sb.Length == 0) return null;
+        var map = sb.ToString();
+        if (map.Length > 4000) map = map[..4000];
+        return (map, stations, tally);
     }
 }
 /// <summary>

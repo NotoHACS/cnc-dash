@@ -52,6 +52,11 @@ using (var scope = app.Services.CreateScope())
     await EnsureColumnAsync(sqconn, "Samples", "ZAct", "REAL NULL");
     await EnsureColumnAsync(sqconn, "Samples", "Line", "INTEGER NULL");
     await EnsureColumnAsync(sqconn, "Samples", "Block", "TEXT NULL");
+    await EnsureColumnAsync(sqconn, "Samples", "CommonVars", "TEXT NULL");
+    await EnsureColumnAsync(sqconn, "Samples", "StationsOn", "INTEGER NULL");
+    await EnsureColumnAsync(sqconn, "Samples", "PartsTally", "REAL NULL");
+    await EnsureColumnAsync(sqconn, "MachineConfigs", "PartsTallyVarIndex", "INTEGER NOT NULL DEFAULT 41");
+    await EnsureColumnAsync(sqconn, "MachineConfigs", "StationsVarIndex", "INTEGER NOT NULL DEFAULT 40");
     if (sqconn.State == ConnectionState.Open) await sqconn.CloseAsync();
 
     if (!await db.Machines.AnyAsync())

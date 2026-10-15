@@ -39,6 +39,9 @@ public class MachineStatus
     // manual seed — exposed so the dashboard/API can show provenance
     public string? PartsSource { get; set; }
 
+    // stations on (common var VC40) when StationsVarIndex > 0 and data exists
+    public int? StationsOn { get; set; }
+
     // Elapsed seconds within the cycle in progress (since the last part-count
     // change); null when the server has no count-change timestamp to anchor to.
     public double? CurrentCycleSeconds { get; set; }

@@ -77,6 +77,11 @@ public class MetricsEngine
             .OrderByDescending(s => s.TsUtc)
             .FirstOrDefaultAsync();
 
+        var lastTallyRow = await db.Samples.AsNoTracking()
+            .Where(s => s.MachineId == machine.Id && s.DataItemId == "Mp1CommonVariable" && s.PartsTally != null && s.TsUtc < shift.StartUtc)
+            .OrderByDescending(s => s.TsUtc)
+            .FirstOrDefaultAsync();
+
         var lastSample = samples.LastOrDefault() ?? lastCountRow;
         status.LastSampleUtc = lastSample?.TsUtc;
         status.Online = lastSample is not null &&
@@ -298,8 +303,69 @@ public class MetricsEngine
             cuttingParts = (long)Math.Floor(advanced / status.LearnedCycleSeconds.Value) * cfg.PartsPerCycle;
         }
 
-        long partsNow = Math.Max(flagParts, cuttingParts);
-        status.PartsSource = flagParts >= cuttingParts ? "partcount pulse" : "cutting time est";
+        // primary parts source: the common-variable parts tally (PartsTally, VC41).
+        // Cumulative across shifts/jobs → baseline = its value at/before the shift
+        // start; a job change (Mpprogram value change) or a tally decrease since the
+        // last sample restarts the baseline at that point.
+        long tallyParts = 0;
+        var haveTally = false;
+        {
+            var tallyRows = samples.Where(s => s.DataItemId == "Mp1CommonVariable" && s.PartsTally != null).ToList();
+            if (lastTallyRow != null)
+            {
+                lastTallyRow.TsUtc = lastTallyRow.TsUtc > shift.StartUtc
+                    ? lastTallyRow.TsUtc
+                    : shift.StartUtc;
+                tallyRows.Add(lastTallyRow);
+            }
+            tallyRows = tallyRows.OrderBy(r => r.TsUtc).ToList();
+
+            var progEvents = new List<DateTime>();
+            string? prevProgValue = null;
+            foreach (var pr in samples.Where(s => s.Program != null).OrderBy(r => r.TsUtc))
+            {
+                if (prevProgValue != null && pr.Program != prevProgValue)
+                    progEvents.Add(pr.TsUtc);
+                prevProgValue = pr.Program;
+            }
+
+            double? tallyNow = null;
+            double tallyBase = 0;
+            double? prevTallyVal = null;
+            var evIdx = 0;
+            var jobChanged = false;
+            foreach (var r in tallyRows)
+            {
+                var v = r.PartsTally!.Value;
+                while (evIdx < progEvents.Count && progEvents[evIdx] <= r.TsUtc)
+                {
+                    evIdx++;
+                    jobChanged = true;
+                }
+                if (!haveTally)
+                    tallyBase = v;
+                else if (jobChanged || (prevTallyVal != null && v < prevTallyVal))
+                    tallyBase = v;
+                haveTally = true;
+                jobChanged = false;
+                prevTallyVal = v;
+                tallyNow = v;
+            }
+            if (haveTally && tallyNow != null && cfg.PartsTallyVarIndex > 0)
+                tallyParts = (long)Math.Max(0, Math.Floor(tallyNow.Value - tallyBase));
+        }
+
+        long partsNow;
+        if (haveTally)
+        {
+            partsNow = tallyParts;
+            status.PartsSource = "common var tally";
+        }
+        else
+        {
+            partsNow = Math.Max(flagParts, cuttingParts);
+            status.PartsSource = flagParts >= cuttingParts ? "partcount pulse" : "cutting time est";
+        }
         if (cfg.PartsThisShiftOverride is int seed && seed > partsNow)
         {
             partsNow = seed;
@@ -307,6 +373,11 @@ public class MetricsEngine
         }
         status.PartsThisShift = partsNow;
         status.CyclesCollected = flagPulses;
+
+        // stations on (VC40 via StationsOn) for the dashboard when enabled
+        status.StationsOn = cfg.StationsVarIndex > 0
+            ? samples.LastOrDefault(s => s.StationsOn != null)?.StationsOn
+            : null;
 
         // cycle progress anchor: cutting time at the last cycle start (latest 0->1
         // pulse or a program-line wrap, whichever is later) — elapsed-in-cycle is

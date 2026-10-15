@@ -57,5 +57,10 @@ public class MachineConfig
     // cutting-time estimate). Auto values higher than the seed win.
     public int? PartsThisShiftOverride { get; set; }
 
+    // Common-variable indices for parts/stations (0 = feature off). The collector
+    // extracts VC40 → StationsOn and VC41 → PartsTally.
+    public int PartsTallyVarIndex { get; set; } = 41;
+    public int StationsVarIndex { get; set; } = 40;
+
     public Machine? Machine { get; set; }
 }
