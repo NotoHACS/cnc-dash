@@ -109,12 +109,6 @@
     </div>
 </div>
 
-    <div class="card">
-        <div class="label">Machine motion</div>
-        <div class="big">@s.MotionUpPercent.ToString("0")%</div>
-        <div class="sub">@(s.IsMoving ? "moving now" : "idle")@(s.LastFeedCmd is double f ? $" · feed {f:0.#}" : "")</div>
-    </div>
-
     <div class="card wide">
     <div class="label">Tools</div>
     <div class="tools-scroll">
