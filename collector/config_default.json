@@ -7,5 +7,7 @@
   "MachineId": "cnc12",
   "ApiKey": "",
   "UploadSeconds": 5,
+  "UseStreaming": 1,
+  "SampleCount": 1000,
   "DiagnosticDumpSeconds": 0
 }

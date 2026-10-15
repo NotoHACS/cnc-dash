@@ -30,8 +30,22 @@ public class MtConnectClient
     /// <summary>Temporary per-poll data-item observer; null when diagnostics are off.</summary>
     public Diagnostics? Diagnostics => diag;
 
-    /// <summary>Fetch /current and return changed samples + tool-change triggers. Null on unreachable/parse failure.</summary>
+    /// <summary>
+    /// Poll the agent: /sample replay streaming (UseStreaming=1, default) or
+    /// legacy /current polling (flip via config_local.json without a redeploy).
+    /// </summary>
     public async Task<PollResult?> PollAsync(Dictionary<string, string> lastValues)
+    {
+        if (cfg.UseStreaming == 1)
+            return await SampleStreamAsync(lastValues);
+        return await CurrentSnapshotAsync(lastValues);
+    }
+
+    /// <summary>
+    /// /current snapshot: change-detected values + triggers; also used to seed
+    /// or reseed the streaming cursor (lastValues cleared = full snapshot posts).
+    /// </summary>
+    public async Task<PollResult?> CurrentSnapshotAsync(Dictionary<string, string> lastValues)
     {
         string? xml = null;
         try
@@ -102,13 +116,7 @@ public class MtConnectClient
                 // change-detect the value like any other item so a targeted
                 // fetch fires only on an actual tool/asset change (the full
                 // refetch still happens on the AssetSeconds cadence)
-                lastValues.TryGetValue(di, out var prevTrig);
-                if (prevTrig != e.Value)
-                {
-                    result.AssetChangedTrigger = true;
-                    result.ChangedAssetId = e.Value;
-                }
-                lastValues[di] = e.Value;
+                HandleAssetTrigger(di, e, lastValues, result);
                 continue;
             }
 
@@ -142,14 +150,7 @@ public class MtConnectClient
 
             lastValues[di] = value;
             result.Samples.Add(sample);
-
-            // first common-variable post visibility (subsequent change posts
-            // stay silent by design)
-            if (di.Equals("Mp1CommonVariable", StringComparison.OrdinalIgnoreCase) && !cvLoggedOnce)
-            {
-                cvLoggedOnce = true;
-                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [debug] common variables posted: stations={sample.stationsOn} tally={sample.partsTally} ({sample.commonVars?.Length ?? 0} chars)");
-            }
+            LogFirstCvPost(sample, di);
         }
 
         // persist agent bookkeeping alongside the last values (state.json) —
@@ -164,6 +165,201 @@ public class MtConnectClient
         // Execution/mode context travels on the sample rows that carry them
         // (server merges by timestamp), so events map onto: exec + mode + fmode.
         return result;
+    }
+
+    /// <summary>
+    /// /sample-backed poll: requests events since the last known sequence
+    /// (replay), advances the cursor from the response Header (or the last
+    /// parsed event when the response saturated the count), and reseeds from
+    /// /current on instance change, error documents, or a cursor older than
+    /// the agent's buffer window.
+    /// </summary>
+    public async Task<PollResult?> SampleStreamAsync(Dictionary<string, string> lastValues)
+    {
+        ulong.TryParse(lastValues.TryGetValue("nextSequence", out var fromStr) ? fromStr : "", out var from);
+
+        // no known cursor (fresh state): seed from a /current snapshot
+        if (from == 0)
+        {
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] no sequence state yet; seeding from /current");
+            return await CurrentSnapshotAsync(lastValues);
+        }
+
+        ulong firstSeq = 0, nextSeq = 0;
+        string? instAttr = null;
+        string? xml;
+
+        // network/HTTP errors: never advance the cursor; retry next interval.
+        // 4xx statuses (cursor older than the agent buffer, etc.) reseed once.
+        try
+        {
+            var uri = $"{cfg.AgentUrl.TrimEnd('/')}/{cfg.DevicePath.Trim('/')}/sample?from={from}&count={Math.Max(1, cfg.SampleCount)}";
+            using (var resp = await http.GetAsync(uri))
+            {
+                if (!resp.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] sample fetch returned HTTP {(int)resp.StatusCode} for from={from} - resnapshotting");
+                    return await ReseedFromCurrentAsync(lastValues);
+                }
+                xml = await resp.Content.ReadAsStringAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] sample fetch failed (from={from}): {ex.Message}");
+            return null;
+        }
+
+        XDocument doc;
+        try { doc = XDocument.Parse(xml); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] xml parse failed (sample): {ex.Message}");
+            return null;
+        }
+
+        // 200 + MTConnectError document (e.g. OUT_OF_RANGE)
+        if (doc.Root?.Name.LocalName == "MTConnectErrors")
+        {
+            var code = doc.Root.Descendants().FirstOrDefault()?.Attribute("errorCode")?.Value ?? "unknown";
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] sample request error ({code}) for from={from} - resnapshotting");
+            return await ReseedFromCurrentAsync(lastValues);
+        }
+
+        // header: instance change (agent restart) or cursor below the buffer
+        // window both invalidate streaming state — reseed from /current
+        var header = doc.Root?.Element(Ns + "Header");
+        if (header != null)
+        {
+            instAttr = header.Attribute("instanceId")?.Value;
+            ulong.TryParse(instAttr, out var curInst);
+            ulong.TryParse(header.Attribute("firstSequence")?.Value, out firstSeq);
+            ulong.TryParse(header.Attribute("nextSequence")?.Value, out nextSeq);
+
+            lastValues.TryGetValue("instanceId", out var prevInstStr);
+            ulong.TryParse(prevInstStr, out var prevInst);
+
+            if (curInst > 0 && prevInst > 0 && curInst != prevInst)
+            {
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] agent restart detected (instanceId {prevInst} -> {curInst}) - resnapshotting");
+                return await ReseedFromCurrentAsync(lastValues);
+            }
+            if (firstSeq > 0 && from < firstSeq)
+            {
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] sequence {from} older than agent buffer [{firstSeq}, {nextSeq}) - resnapshotting");
+                return await ReseedFromCurrentAsync(lastValues);
+            }
+        }
+
+        // parse events (ordered by sequence; sequence REQUIRED in sample mode —
+        // /sample events carry real agent sequences; attr-less elements are a
+        // protocol violation here: log once per poll and skip)
+        var result = new PollResult
+        {
+            Samples = new List<SampleRow>(),
+            AssetChangedTrigger = false,
+        };
+        ulong maxSeq = 0;
+        ulong eventCount = 0;
+        var countCap = (ulong)Math.Max(1, cfg.SampleCount);
+        var seqWarned = false;
+
+        var elements = doc.Descendants()
+            .Where(e => e.Attribute("dataItemId") != null);
+
+        foreach (var e in elements)
+        {
+            var di = e.Attribute("dataItemId")!.Value;
+            var tsAttr = e.Attribute("timestamp")?.Value;
+            var ts = tsAttr != null ? DateTime.Parse(tsAttr).ToUniversalTime() : DateTime.UtcNow;
+            var seqStr = e.Attribute("sequence")?.Value;
+            diag?.Observe(di, e.Value, tsAttr ?? "", seqStr ?? "");
+
+            if (seqStr == null || !long.TryParse(seqStr, out var agentSeq))
+            {
+                if (!seqWarned)
+                {
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [debug] sample event without sequence skipped: {di}");
+                    seqWarned = true;
+                }
+                continue;
+            }
+            var seqU = (ulong)agentSeq;
+            if (seqU > maxSeq) maxSeq = seqU;
+            eventCount++;
+
+            if (cfg.AssetTriggerItems.Any(t => di.Contains(t, StringComparison.OrdinalIgnoreCase)))
+            {
+                HandleAssetTrigger(di, e, lastValues, result);
+                continue;
+            }
+
+            var sample = SampleRow.From(di, ts, agentSeq, e);
+            if (sample is null) continue;
+
+            // safety net: /sample only returns changed events by spec; the
+            // canonical gate also dedupes cursor replays (from is inclusive)
+            var value = sample.ValueCanonical();
+            if (lastValues.TryGetValue(di, out var prev) && prev == value)
+                continue;
+
+            lastValues[di] = value;
+            result.Samples.Add(sample);
+            LogFirstCvPost(sample, di);
+        }
+
+        // cursor bookkeeping: with a saturated response, hold at the last parsed
+        // sequence so the pending remainder drains next round; otherwise jump to
+        // the agent's head (nextSequence = where the next from= starts)
+        ulong newSeq;
+        if (eventCount >= countCap && maxSeq > 0)
+            newSeq = maxSeq;
+        else if (nextSeq > 0)
+            newSeq = nextSeq;
+        else if (maxSeq > 0)
+            newSeq = maxSeq;
+        else
+            newSeq = from;
+
+        lastValues["nextSequence"] = newSeq.ToString();
+        if (instAttr != null && ulong.TryParse(instAttr, out var instOut))
+            lastValues["instanceId"] = instOut.ToString();
+        if (firstSeq > 0)
+            lastValues["firstSequence"] = firstSeq.ToString();
+
+        return result;
+    }
+
+    /// <summary>
+    /// Reseed: drop the change-detection cache (next /current posts a full
+    /// snapshot) and advance the cursor from the /current Header.
+    /// </summary>
+    private async Task<PollResult?> ReseedFromCurrentAsync(Dictionary<string, string> lastValues)
+    {
+        lastValues.Clear();
+        return await CurrentSnapshotAsync(lastValues);
+    }
+
+    // the agent re-emits the CURRENT tool's assetId every poll; change-detect
+    // the value like any other item so a targeted fetch fires only on an
+    // actual tool/asset change (the full refetch still happens on AssetSeconds)
+    private void HandleAssetTrigger(string di, XElement e, Dictionary<string, string> lastValues, PollResult result)
+    {
+        lastValues.TryGetValue(di, out var prevTrig);
+        if (prevTrig != e.Value)
+        {
+            result.AssetChangedTrigger = true;
+            result.ChangedAssetId = e.Value;
+        }
+        lastValues[di] = e.Value;
+    }
+
+    // first common-variable post visibility (subsequent change posts are silent)
+    private void LogFirstCvPost(SampleRow sample, string di)
+    {
+        if (!di.Equals("Mp1CommonVariable", StringComparison.OrdinalIgnoreCase) || cvLoggedOnce) return;
+        cvLoggedOnce = true;
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [debug] common variables posted: stations={sample.stationsOn} tally={sample.partsTally} ({sample.commonVars?.Length ?? 0} chars)");
     }
 
     // FNV-1a 64 of the payload → stable positive sequence for items whose agent

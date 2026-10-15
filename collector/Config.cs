@@ -23,6 +23,14 @@ public class CollectorConfig
     public int DiagnosticDumpSeconds { get; set; } = 0;
     public string DiagnosticLogPath { get; set; } = "datadump.log";
 
+    // 1 = /sample streaming with sequence replay (default, accurate event
+    // times + gap recovery); 0 = legacy /current polling — flip via
+    // config_local.json if the field test misbehaves (no redeploy needed)
+    public int UseStreaming { get; set; } = 1;
+
+    // max observations returned per /sample request
+    public int SampleCount { get; set; } = 1000;
+
     // Data items to track: dataItemId -> null = any element, tracked generically.
     // Anything not listed is ignored.
     public string[] SampleDataItems { get; set; } = new[]
