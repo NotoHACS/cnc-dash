@@ -162,6 +162,22 @@ public class MtConnectClient
         // (server merges by timestamp), so events map onto: exec + mode + fmode.
         return result;
     }
+
+    // FNV-1a 64 of the payload → stable positive sequence for items whose agent
+    // element carries no sequence attribute (server dedupe key still value-bound)
+    private static long HashPayload(string value)
+    {
+        unchecked
+        {
+            ulong h = 14695981039346656037;
+            foreach (var ch in value)
+            {
+                h ^= ch;
+                h *= 1099511628211;
+            }
+            return (long)(h & 0x7FFFFFFFFFFFFFFF);
+        }
+    }
 }
 
 public class PollResult
@@ -309,22 +325,6 @@ public class SampleRow
         var map = sb.ToString();
         if (map.Length > 4000) map = map[..4000];
         return (map, stations, tally);
-    }
-
-    // FNV-1a 64 of the payload → stable positive sequence for items whose agent
-    // element carries no sequence attribute (server dedupe key still value-bound)
-    private static long HashPayload(string value)
-    {
-        unchecked
-        {
-            ulong h = 14695981039346656037;
-            foreach (var ch in value)
-            {
-                h ^= ch;
-                h *= 1099511628211;
-            }
-            return (long)(h & 0x7FFFFFFFFFFFFFFF);
-        }
     }
 }
 /// <summary>
