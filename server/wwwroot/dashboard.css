@@ -59,6 +59,8 @@ a { color: #58a6ff; text-decoration: none; }
 }
 .alarmbar.red { background: #3d1216; border: 1px solid #f8514980; color: #ff8f88; }
 .alarmbar.amber { background: #38290f; border: 1px solid #d2992280; color: #e3b341; }
+.alarmbar.cleared { background: #12331e; border: 1px solid #57d98a80; color: #8fe6ae; }
+.alarmbar .ab-check { font-weight: 700; }
 .alarmbar .ab-title { font-weight: 700; }
 .alarmbar .ab-msg { opacity: .8; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

@@ -133,11 +133,15 @@
             var bar = document.getElementById("alarmbar");
             if (!bar) return;
             if (!d || !d.title) { bar.innerHTML = ""; bar.style.display = "none"; return; }
+            var cleared = d.title.indexOf("[CLEARED]") === 0;
             bar.style.display = "";
-            var cls = d.priority >= 4 ? "alarmbar red" : "alarmbar amber";
+            var cls = cleared ? "alarmbar cleared" : (d.priority >= 4 ? "alarmbar red" : "alarmbar amber");
+            var title = cleared ? d.title.replace("[CLEARED]", "").trim() : d.title;
             var age = Math.max(0, Math.floor(Date.now() / 1000 - d.ts));
             var ago = age < 90 ? age + "s" : age < 5400 ? Math.round(age / 60) + "m" : Math.round(age / 3600) + "h";
-            bar.innerHTML = '<div class="' + cls + '"><span class="ab-title">' + esc(d.title) + '</span>' +
+            bar.innerHTML = '<div class="' + cls + '">' +
+                (cleared ? '<span class="ab-check">&#10003;</span> ' : '') +
+                '<span class="ab-title">' + esc(title) + '</span>' +
                 '<span class="ab-msg">' + esc(d.message) + '</span>' +
                 '<span class="ab-age" style="margin-left:auto;opacity:.6">' + ago + ' ago</span></div>';
         }).catch(function () { });
