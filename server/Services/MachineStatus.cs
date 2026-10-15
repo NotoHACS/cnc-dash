@@ -33,10 +33,6 @@ public class MachineStatus
     public int? CurrentTool { get; set; }
     public long PartsThisShift { get; set; }
     public double ExpectedParts { get; set; }
-
-    // % of target = capacity math: PartsThisShift / (max parts/hr x FULL shift
-    // window hours); falls back to pace math (parts / ExpectedParts) when no
-    // theoretical rate is learned yet
     public double PercentOfExpected { get; set; }
 
     // which signal produced PartsThisShift: partcount pulse | cutting time est |

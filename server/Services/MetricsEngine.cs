@@ -405,22 +405,10 @@ public class MetricsEngine
         else
         {
             var maxRate = status.MaxPartsPerHour!.Value;
-
-            // pace expectation — unchanged ('expected by shift end' field)
             status.ExpectedParts = Math.Floor(maxRate * status.ShiftElapsedMinutes / 60.0);
-
-            // % of target = CAPACITY math: theoretical rate x the FULL shift
-            // window (start..end hours), not pace-to-now. Reads lower early in
-            // the shift by design. Falls back to pace math when there is no
-            // capacity basis (rate not learned).
-            var shiftHours = (shift.EndUtc - shift.StartUtc).TotalHours;
-            var shiftCapacity = maxRate * shiftHours;
-            status.PercentOfExpected = shiftCapacity > 0
-                ? status.PartsThisShift / shiftCapacity * 100
-                : status.ExpectedParts > 0
-                    ? status.PartsThisShift / status.ExpectedParts * 100
-                    : 0;
-
+            status.PercentOfExpected = status.ExpectedParts > 0
+                ? status.PartsThisShift / status.ExpectedParts * 100
+                : 0;
             if (status.PercentOfExpected >= cfg.GreenThresholdPercent)
             {
                 status.Color = StatusColor.Green;
