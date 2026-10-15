@@ -434,6 +434,7 @@ public class MetricsEngine
         status.Program = samples.LastOrDefault(s => s.Program != null)?.Program;
 
         status.Tools = await GetToolsAsync(db, machine.Id, cfg);
+        status.ExpiredTools = status.Tools.Count(t => t.Grade == "ng");
         return status;
     }
 
@@ -475,6 +476,19 @@ public class MetricsEngine
                     cyclesLeft = Math.Max(0, t.LifeValue.Value);
             }
 
+            // "used/set" per MTConnect ToolLife semantics when the life is count
+            // based and the initial budget is known: UP counts up to initial
+            // (used = value); DOWN counts down to 0 (used = initial - value).
+            // Set = LifeInitial. Missing budget or percent-type life → null.
+            string? lifeUsedSet = null;
+            if (t.LifeValue.HasValue && t.LifeInitial is > 0 && lt is "PARTS" or "PART_COUNT")
+            {
+                var used = t.CountDirection == "UP"
+                    ? t.LifeValue.Value
+                    : Math.Max(0, t.LifeInitial.Value - t.LifeValue.Value);
+                lifeUsedSet = $"{used:0}/{t.LifeInitial.Value:0}";
+            }
+
             return new ToolStatus
             {
                 AssetId = t.AssetId,
@@ -484,6 +498,7 @@ public class MetricsEngine
                 LifeType = t.LifeType,
                 PercentRemaining = pct,
                 CyclesLeft = cyclesLeft,
+                LifeUsedSet = lifeUsedSet,
                 Status = t.Status,
             };
         }).OrderBy(t => t.ToolNumber ?? int.MaxValue).ToList();

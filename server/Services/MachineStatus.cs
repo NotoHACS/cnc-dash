@@ -71,6 +71,7 @@ public class MachineStatus
     public double? LastFeedCmd { get; set; }
 
     // Tools
+    public int ExpiredTools { get; set; }
     public List<ToolStatus> Tools { get; set; } = new();
 }
 
@@ -87,5 +88,11 @@ public class ToolStatus
     // type itself is part counts (PARTS / PART_COUNT); percent or minutes life
     // cannot be converted into cycles honestly and stays null (rendered as "—").
     public double? CyclesLeft { get; set; }
+
+    // "used/set" for count-based life per MTConnect ToolLife semantics:
+    // CountDirection UP → LifeValue counts up to LifeInitial (used = value);
+    // DOWN → LifeValue counts down to 0 (used = initial - value). Set = LifeInitial.
+    // null when LifeInitial is missing or life is percent/minutes based.
+    public string? LifeUsedSet { get; set; }
     public string? Status { get; set; }
 }

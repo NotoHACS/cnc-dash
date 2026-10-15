@@ -31,15 +31,23 @@ a { color: #58a6ff; text-decoration: none; }
 .right { margin-left: auto; }
 
 .topbar .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; align-self: center; }
+
+/* machine-view top bar: Current Tool block + RPM readout only */
+.topbar.toolsbar { align-items: stretch; gap: 0; padding: 4px 0; }
+.toolblock {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; min-height: 44px; padding: 0 16px; border-right: 1px solid var(--line);
+    font-size: 16px; line-height: 1.15;
+}
+.toolblock .tb-label { color: var(--muted); white-space: nowrap; }
+.toolblock .tb-value { font-weight: 700; white-space: nowrap; }
+.rpmblock { display: flex; align-items: baseline; gap: 6px; padding: 0 16px; align-self: center; }
+.rpm-num { font-size: 24px; font-weight: 800; line-height: 1; }
+.rpm-unit { color: var(--muted); font-size: 13px; }
 .pill {
     display: inline-block; padding: 2px 10px; border-radius: 99px;
     background: #1f2530; color: var(--muted); font-size: 12px;
 }
-.pill.curtool {
-    border: 1px solid #58a6ff; color: #9ecbff;
-    background: #1a3350;
-}
-
 .updated { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
 .updated.stale { color: var(--yellow); }
 .updated.old { color: var(--red); }
@@ -52,7 +60,6 @@ a { color: #58a6ff; text-decoration: none; }
 .statusbox .reason { font-size: 18px; color: var(--text); }
 .statusbox .shift { color: var(--muted); margin-top: 6px; }
 /* current-tool pill rides inside the colored statusbox (top-right) */
-.statusbox .statustool { position: absolute; top: 14px; right: 14px; }
 .green  { background: #12351d; color: #7ee2a8; }
 .yellow { background: #3a2b08; color: #f2cc60; }
 .red    { background: #3c1210; color: #ff8f88; }

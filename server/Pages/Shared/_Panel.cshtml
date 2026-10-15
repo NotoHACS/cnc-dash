@@ -16,12 +16,6 @@
     // first minutes of a shift. Rendered muted, no colored bar.
     var grace = (s.PartsThisShift == 0 && s.ExpectedParts == 0) || s.ShiftElapsedMinutes < 15;
 
-    string Mmss(double sec)
-    {
-        var t = TimeSpan.FromSeconds(Math.Max(0, sec));
-        return t.TotalMinutes < 60 ? t.ToString(@"mm\:ss") : t.ToString(@"hh\:mm\:ss");
-    }
-
     var orderedTools = s.Tools
         .Select(t => new { T = t, Rank = t.Grade is "warn" or "ng" ? 0 : 1 })
         .OrderBy(x => x.Rank)
@@ -34,47 +28,15 @@
 }
 
 <div class="statusbox @cls">
-    @if (s.CurrentTool is int cur)
-    {
-        <span class="pill curtool statustool">Current Tool @cur</span>
-    }
     <div class="reason">@s.StatusReason</div>
     <div class="shift">@s.ShiftName &middot; started @s.ShiftStartUtc.ToLocalTime().ToString("HH:mm")</div>
 </div>
 
 <div class="grid">
     <div class="card">
-        <div class="label">Cycle progress</div>
-        @if (s.CurrentCycleSeconds is double cs)
-        {
-            @if (s.LearnedCycleSeconds is double target)
-            {
-                <div class="big">@Mmss(cs) / @Mmss(target)</div>
-                <div class="bar"><div class="fill green" style="width:@(Math.Clamp(cs / target * 100, 0, 100).ToString("0"))%"></div></div>
-            }
-            else
-            {
-                <div class="big">in cycle</div>
-                <div class="sub">@Mmss(cs) elapsed</div>
-            }
-        }
-        else
-        {
-            <div class="big">in cycle</div>
-            <div class="sub">no counts yet</div>
-        }
-    </div>
-    <div class="card">
         <div class="label">Parts this shift</div>
         <div class="big">@s.PartsThisShift</div>
-        @if (s.StationsOn is int stations)
-        {
-            <div class="sub">@stations active stations</div>
-        }
-        else
-        {
-            <div class="sub">@s.ExpectedParts expected by shift end</div>
-        }
+        <div class="sub">@s.ExpectedParts expected by shift end</div>
     </div>
     <div class="card">
         <div class="label">Efficiency</div>
@@ -101,20 +63,12 @@
     <div class="card">
         <div class="label">Spindle uptime</div>
         <div class="big">@s.SpindleUptimePercent.ToString("0")%</div>
-        <div class="sub">@(s.LastSpindleSpeed is double rpm ? $"{rpm:0} RPM · " : "")@(s.SpindleRunning ? $"spindle ran {s.SpindleUptimePercent:0}% of shift so far" : "spindle stopped")</div>
+        <div class="sub">@(s.SpindleRunning ? $"spindle ran {s.SpindleUptimePercent:0}% of shift so far" : "spindle stopped")</div>
     </div>
     <div class="card">
-        <div class="label">Cycle time</div>
-        @if (s.LearnedCycleSeconds is double c)
-        {
-            <div class="big">@(c >= 120 ? (c / 60.0).ToString("0.0") + "m" : c.ToString("0.#") + "s")</div>
-            <div class="sub">max @s.MaxPartsPerHour?.ToString("0")/hr</div>
-        }
-        else
-        {
-            <div class="big">&mdash;</div>
-            <div class="sub">LEARNING (@s.CyclesCollected cycles so far)</div>
-        }
+        <div class="label">Expired tools</div>
+        <div class="big">@s.ExpiredTools</div>
+        <div class="sub">tools with NG status</div>
     </div>
 </div>
 
@@ -122,7 +76,7 @@
     <div class="label">Tools</div>
     <div class="tools-scroll">
         <table class="tools">
-            <tr><th>Tool</th><th>POT</th><th>Life left</th><th>Cycles left</th><th>Grade</th></tr>
+            <tr><th>Tool</th><th>POT</th><th>Life left</th><th>Cycles left</th><th>Status</th></tr>
             @foreach (var x in orderedTools)
             {
                 var t = x.T;
@@ -147,9 +101,9 @@
                         }
                     </td>
                     <td>
-                        @if (t.CyclesLeft is double cyc)
+                        @if (t.LifeUsedSet is string us)
                         {
-                            <span>@cyc.ToString("0")</span>
+                            <span>@us</span>
                         }
                         else
                         {
