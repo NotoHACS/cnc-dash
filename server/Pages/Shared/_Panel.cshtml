@@ -38,6 +38,8 @@
         cyclePct = Math.Clamp(ccs / ctarget * 100, 0, 100);
 }
 
+<div id="alarmbar"></div>
+
 <div class="card cyclecard">
     <div class="cc-left">
         <div class="label">Cycle Progress</div>
@@ -120,7 +122,7 @@
     </div>
 </div>
 
-<div id="alarmbar"></div>
+@* Alarm bar markup lives at panel top (above the cycle card) — see alarmbar div there. *@
 @* Alarm bar: server subscribes to the ntfy topic (AlarmFeedService) and
    exposes the latest message; this polls the local API, not ntfy directly. *@
 <script>
