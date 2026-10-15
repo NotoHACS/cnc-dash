@@ -48,6 +48,27 @@ public class IngestSample
 
     [JsonPropertyName("tool")]
     public int? CurrentTool { get; set; }
+
+    [JsonPropertyName("totalCuttingTime")]
+    public double? TotalCuttingTime { get; set; }
+
+    [JsonPropertyName("feedCmd")]
+    public double? FeedCmd { get; set; }
+
+    [JsonPropertyName("xAct")]
+    public double? XAct { get; set; }
+
+    [JsonPropertyName("yAct")]
+    public double? YAct { get; set; }
+
+    [JsonPropertyName("zAct")]
+    public double? ZAct { get; set; }
+
+    [JsonPropertyName("line")]
+    public long? Line { get; set; }
+
+    [JsonPropertyName("block")]
+    public string? Block { get; set; }
 }
 
 public class IngestTool
@@ -174,6 +195,13 @@ public static class IngestEndpoints
                     PartCount = s.PartCount,
                     Program = s.Program,
                     CurrentTool = s.CurrentTool,
+                    TotalCuttingTime = s.TotalCuttingTime,
+                    FeedCmd = s.FeedCmd,
+                    XAct = s.XAct,
+                    YAct = s.YAct,
+                    ZAct = s.ZAct,
+                    Line = s.Line,
+                    Block = s.Block,
                 });
                 result.SamplesAccepted++;
             }

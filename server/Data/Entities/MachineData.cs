@@ -34,6 +34,23 @@ public class Sample
     public string? Program { get; set; }
 
     public int? CurrentTool { get; set; }
+
+    // Mp1TotalCuttingTime [AccumulatedTime] seconds, monotonic while cutting —
+    // primary cycle/part anchor (Mppartcount is a 0/1 cycle-complete pulse).
+    public double? TotalCuttingTime { get; set; }
+
+    // Mp1Fcmd [PathFeedrate] commanded feed; > 0 while axes are moving.
+    public double? FeedCmd { get; set; }
+
+    // MX1actm / MY1actm / MZ1actm [Position] axis positions.
+    public double? XAct { get; set; }
+    public double? YAct { get; set; }
+    public double? ZAct { get; set; }
+
+    // Mp1line [Line] / Mp1block [Block]: program position — line wrap detects
+    // a program restart (new cycle).
+    public long? Line { get; set; }
+    public string? Block { get; set; }
 }
 
 public class ToolAsset

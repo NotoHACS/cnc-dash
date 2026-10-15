@@ -114,6 +114,13 @@ public class SampleRow
     public string? prog { get; set; }
     public int? tool { get; set; }
     public double? runtime { get; set; }
+    public double? totalCuttingTime { get; set; }
+    public double? feedCmd { get; set; }
+    public double? xAct { get; set; }
+    public double? yAct { get; set; }
+    public double? zAct { get; set; }
+    public long? line { get; set; }
+    public string? block { get; set; }
 
     public static SampleRow? From(string di, DateTime ts, long seq, XElement e)
     {
@@ -140,6 +147,26 @@ public class SampleRow
             case "Mp1SpindleRunTime":
                 if (double.TryParse(e.Value, out var r)) row.runtime = r; else return null;
                 break;
+            case "Mp1TotalCuttingTime":
+                if (double.TryParse(e.Value, out var tc)) row.totalCuttingTime = tc; else return null;
+                break;
+            case "Mp1Fcmd":
+                if (double.TryParse(e.Value, out var f)) row.feedCmd = f; else return null;
+                break;
+            case "MX1actm":
+                if (double.TryParse(e.Value, out var x)) row.xAct = x; else return null;
+                break;
+            case "MY1actm":
+                if (double.TryParse(e.Value, out var y)) row.yAct = y; else return null;
+                break;
+            case "MZ1actm":
+                if (double.TryParse(e.Value, out var z)) row.zAct = z; else return null;
+                break;
+            case "Mp1line":
+                if (long.TryParse(e.Value, out var ln)) row.line = ln; else return null;
+                break;
+            case "Mp1block":
+                row.block = e.Value; break;
             default:
                 return null;
         }
@@ -157,6 +184,13 @@ public class SampleRow
         if (prog != null) return $"prog:{prog}";
         if (tool.HasValue) return $"tool:{tool.Value}";
         if (runtime.HasValue) return $"runtime:{runtime.Value:0.#}";
+        if (totalCuttingTime.HasValue) return $"tcut:{totalCuttingTime.Value:0.#}";
+        if (feedCmd.HasValue) return $"feed:{feedCmd.Value:0.#}";
+        if (xAct.HasValue) return $"x:{xAct.Value:0.#}";
+        if (yAct.HasValue) return $"y:{yAct.Value:0.#}";
+        if (zAct.HasValue) return $"z:{zAct.Value:0.#}";
+        if (line.HasValue) return $"line:{line.Value}";
+        if (block != null) return $"block:{block}";
         return "";
     }
 }

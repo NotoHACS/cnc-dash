@@ -52,5 +52,10 @@ public class MachineConfig
     // learned enough cycles; 0 means no expectation (LEARNING until then).
     public double ExpectedCycleSeconds { get; set; } = 0;
 
+    // Manual seed for "parts this shift" (e.g. today's known count at deploy).
+    // null = auto (partcount pulses × PartsPerCycle, floored against the
+    // cutting-time estimate). Auto values higher than the seed win.
+    public int? PartsThisShiftOverride { get; set; }
+
     public Machine? Machine { get; set; }
 }

@@ -43,6 +43,7 @@ public class IndexModel : PageModel
     [BindProperty] public int SpindleStopDelaySeconds { get; set; }
     [BindProperty] public int ProbeToolNumber { get; set; }
     [BindProperty] public double ExpectedCycleSeconds { get; set; }
+    [BindProperty] public int? PartsThisShiftOverride { get; set; }
     [BindProperty] public string? TimeZone { get; set; }
 
     [BindProperty] public string? NewMachineId { get; set; }
@@ -99,6 +100,7 @@ public class IndexModel : PageModel
         cfg.SpindleStopDelaySeconds = Math.Max(0, SpindleStopDelaySeconds);
         cfg.ProbeToolNumber = Math.Max(0, ProbeToolNumber);
         cfg.ExpectedCycleSeconds = Math.Max(0, ExpectedCycleSeconds);
+        cfg.PartsThisShiftOverride = PartsThisShiftOverride is < 0 ? null : PartsThisShiftOverride;
         cfg.TimeZone = string.IsNullOrWhiteSpace(TimeZone) ? cfg.TimeZone : TimeZone.Trim();
 
         await db.SaveChangesAsync();
@@ -142,6 +144,7 @@ public class IndexModel : PageModel
         SpindleStopDelaySeconds = cfg.SpindleStopDelaySeconds;
         ProbeToolNumber = cfg.ProbeToolNumber;
         ExpectedCycleSeconds = cfg.ExpectedCycleSeconds;
+        PartsThisShiftOverride = cfg.PartsThisShiftOverride;
         TimeZone = cfg.TimeZone;
 
         Shift1Enabled = cfg.Shift1Start != null;

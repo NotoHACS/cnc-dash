@@ -35,6 +35,10 @@ public class MachineStatus
     public double ExpectedParts { get; set; }
     public double PercentOfExpected { get; set; }
 
+    // which signal produced PartsThisShift: partcount pulse | cutting time est |
+    // manual seed — exposed so the dashboard/API can show provenance
+    public string? PartsSource { get; set; }
+
     // Elapsed seconds within the cycle in progress (since the last part-count
     // change); null when the server has no count-change timestamp to anchor to.
     public double? CurrentCycleSeconds { get; set; }
@@ -48,6 +52,11 @@ public class MachineStatus
     public double SpindleUptimePercent { get; set; }
     public bool SpindleRunning { get; set; }
     public double? LastSpindleSpeed { get; set; }
+
+    // Motion (Mp1Fcmd > 0 or axis position change > 0.1 within 10s)
+    public bool IsMoving { get; set; }
+    public double MotionUpPercent { get; set; }
+    public double? LastFeedCmd { get; set; }
 
     // Tools
     public List<ToolStatus> Tools { get; set; } = new();

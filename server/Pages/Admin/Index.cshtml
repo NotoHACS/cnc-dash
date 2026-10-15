@@ -69,6 +69,7 @@
                 <label>Part name <input asp-for="PartName" /></label>
                 <label>Parts per cycle <input type="number" min="1" asp-for="PartsPerCycle" /></label>
                 <label>Expected cycle seconds (seed, 0 = learn only) <input type="number" min="0" step="1" asp-for="ExpectedCycleSeconds" /></label>
+                <label>Parts this shift override (blank = auto) <input type="number" min="0" step="1" asp-for="PartsThisShiftOverride" /></label>
                 <label>Green threshold % <input type="number" min="1" max="200" step="1" asp-for="GreenThresholdPercent" /></label>
                 <label>Tool warn threshold % remaining <input type="number" min="0" max="100" step="1" asp-for="WarnThresholdPercent" /></label>
                 <label>Spindle "running" RPM threshold <input type="number" min="0" asp-for="SpindleRunningRpm" /></label>

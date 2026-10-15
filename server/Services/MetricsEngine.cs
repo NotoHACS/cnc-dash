@@ -67,6 +67,16 @@ public class MetricsEngine
             .OrderByDescending(s => s.TsUtc)
             .FirstOrDefaultAsync();
 
+        var lastCuttingRow = await db.Samples.AsNoTracking()
+            .Where(s => s.MachineId == machine.Id && s.DataItemId == "Mp1TotalCuttingTime" && s.TsUtc < shift.StartUtc)
+            .OrderByDescending(s => s.TsUtc)
+            .FirstOrDefaultAsync();
+
+        var lastFeedCmdRow = await db.Samples.AsNoTracking()
+            .Where(s => s.MachineId == machine.Id && s.DataItemId == "Mp1Fcmd" && s.TsUtc < shift.StartUtc)
+            .OrderByDescending(s => s.TsUtc)
+            .FirstOrDefaultAsync();
+
         var lastSample = samples.LastOrDefault() ?? lastCountRow;
         status.LastSampleUtc = lastSample?.TsUtc;
         status.Online = lastSample is not null &&
@@ -187,60 +197,68 @@ public class MetricsEngine
                 : 0;
         }
 
-        // ---- parts & cycle learning -------------------------------------------------
-        var countRows = samples.Where(s => s.DataItemId == "Mppartcount").OrderBy(r => r.TsUtc).ToList();
-        long partsThisShift = 0;
-        var cycleSeconds = new List<double>();
-        DateTime? prevCountTs = null;
-
-        // Baseline = last count row before the shift. Without one (server restart),
-        // the first in-window row only SEEDS the counter — its absolute value belongs
-        // to the part of the cycle already completed before this shift, so we must
-        // not credit it.
-        long prevCount;
-        bool seededWithoutBaseline = false;
-        if (lastCountRow != null)
+        // ---- motion (Mp1Fcmd: commanded feed; > 0 while axes move) ------------------
+        // FeedCmd posts on change, so the feed holds its value until the next feed
+        // row: intervals [row with feed > 0, next row with feed == 0) are moving
+        // time. Pre-shift baseline clamped to the shift start like the speed one.
+        var feedRows = samples.Where(s => s.DataItemId == "Mp1Fcmd" && s.FeedCmd != null).ToList();
+        if (lastFeedCmdRow != null)
         {
-            prevCount = lastCountRow.PartCount ?? 0;
-            prevCountTs = lastCountRow.TsUtc;
-        }
-        else
-        {
-            prevCount = countRows.FirstOrDefault()?.PartCount ?? 0;
-            seededWithoutBaseline = countRows.Count > 0;
+            lastFeedCmdRow.TsUtc = lastFeedCmdRow.TsUtc > shift.StartUtc
+                ? lastFeedCmdRow.TsUtc
+                : shift.StartUtc;
+            feedRows.Insert(0, lastFeedCmdRow);
         }
 
-        // skip the seed row when we seeded from an in-window row
-        var rows = seededWithoutBaseline ? countRows.Skip(1) : countRows;
-        foreach (var row in rows)
+        double moveSeconds = 0;
+        DateTime? moveFrom = null;
+        foreach (var row in feedRows.OrderBy(r => r.TsUtc))
         {
-            var cur = row.PartCount ?? prevCount;
-            long delta;
-            if (cur >= prevCount) delta = cur - prevCount;
-            else delta = cur; // counter reset (program restart): count what's now on the counter
-            partsThisShift += delta;
-
-            if (delta > 0 && prevCountTs != null)
+            var mov = row.FeedCmd > 0;
+            if (mov && moveFrom == null) moveFrom = row.TsUtc;
+            else if (!mov && moveFrom != null)
             {
-                var dt = (row.TsUtc - prevCountTs.Value).TotalSeconds;
-                if (dt > 5 && dt < 24 * 3600)
-                    cycleSeconds.Add(dt);
+                moveSeconds += (row.TsUtc - moveFrom.Value).TotalSeconds;
+                moveFrom = null;
             }
+        }
+        if (moveFrom != null)
+            moveSeconds += (nowUtc - moveFrom.Value).TotalSeconds;
 
-            prevCount = cur;
-            if (delta > 0 || prevCountTs == null) prevCountTs = row.TsUtc;
+        status.LastFeedCmd = feedRows.LastOrDefault()?.FeedCmd;
+        status.IsMoving = status.LastFeedCmd > 0 || AxisMovedRecently(samples, nowUtc);
+        status.MotionUpPercent = status.ShiftElapsedMinutes > 0.5
+            ? Math.Min(100, moveSeconds / (status.ShiftElapsedMinutes * 60) * 100)
+            : 0;
+
+        // ---- parts & cycle learning -------------------------------------------------
+        // Mppartcount is a 0/1 cycle-complete pulse (NOT cumulative): each 0->1
+        // transition completes one cycle → PartsPerCycle parts. Cycle learning uses
+        // the pulse cadence (the flag is a change-only stream, so pulse-to-pulse
+        // dt ≈ one full cycle).
+        var countRows = samples.Where(s => s.DataItemId == "Mppartcount").OrderBy(r => r.TsUtc).ToList();
+        var cycleSeconds = new List<double>();
+        long flagPulses = 0;
+        var pulseTss = new List<DateTime>();
+        long prevFlag = lastCountRow?.PartCount ?? 0;
+        foreach (var row in countRows)
+        {
+            var cur = row.PartCount ?? prevFlag;
+            if (cur == 1 && prevFlag == 0)
+            {
+                if (pulseTss.Count > 0)
+                {
+                    var dt = (row.TsUtc - pulseTss[^1]).TotalSeconds;
+                    if (dt > 5 && dt < 24 * 3600)
+                        cycleSeconds.Add(dt);
+                }
+                flagPulses++;
+                pulseTss.Add(row.TsUtc);
+            }
+            prevFlag = cur;
         }
 
-        status.PartsThisShift = partsThisShift;
-        status.CyclesCollected = countRows.Count - (lastCountRow != null ? 1 : 0);
-
-        // elapsed within the cycle in progress = time since the last part-count
-        // change (the collector only posts changed values, so every count row IS
-        // a change); null when there is nothing to anchor to.
-        if (prevCountTs is DateTime lastCountChange)
-            status.CurrentCycleSeconds = Math.Max(0, (nowUtc - lastCountChange).TotalSeconds);
-
-        // learned cycle: rolling median of window, blended with seeded expectation
+        // learned cycle: rolling median of pulse cadence, blended with seeded expectation
         if (cycleSeconds.Count > 0)
         {
             cycleSeconds.Sort();
@@ -257,14 +275,81 @@ public class MetricsEngine
             status.MaxPartsPerHour = 3600.0 / status.LearnedCycleSeconds.Value * cfg.PartsPerCycle;
         }
 
+        // cutting-time estimate as fallback when pulses are missed (e.g. collector
+        // outage): whole cycles completed since shift start ≈ cutting seconds
+        // advanced / learned cycle. Mp1TotalCuttingTime is seconds and monotonic.
+        var tcutRows = samples.Where(s => s.DataItemId == "Mp1TotalCuttingTime" && s.TotalCuttingTime != null).ToList();
+        double? tcutShiftStart = null;
+        if (lastCuttingRow != null)
+        {
+            tcutShiftStart = lastCuttingRow.TotalCuttingTime;
+            lastCuttingRow.TsUtc = lastCuttingRow.TsUtc > shift.StartUtc
+                ? lastCuttingRow.TsUtc
+                : shift.StartUtc;
+            tcutRows.Add(lastCuttingRow);
+        }
+        tcutRows = tcutRows.OrderBy(r => r.TsUtc).ToList();
+
+        long cuttingParts = 0;
+        if (status.LearnedCycleSeconds is > 0 && tcutShiftStart is > 0)
+        {
+            double tcutNow0 = tcutRows.LastOrDefault()?.TotalCuttingTime ?? tcutShiftStart ?? 0;
+            var advanced = Math.Max(0.0, tcutNow0 - tcutShiftStart.Value);
+            cuttingParts = (long)Math.Floor(advanced / status.LearnedCycleSeconds.Value) * cfg.PartsPerCycle;
+        }
+
+        long partsNow = Math.Max(flagParts, cuttingParts);
+        status.PartsSource = flagParts >= cuttingParts ? "partcount pulse" : "cutting time est";
+        if (cfg.PartsThisShiftOverride is int seed && seed > partsNow)
+        {
+            partsNow = seed;
+            status.PartsSource = "manual seed";
+        }
+        status.PartsThisShift = partsNow;
+        status.CyclesCollected = flagPulses;
+
+        // cycle progress anchor: cutting time at the last cycle start (latest 0->1
+        // pulse or a program-line wrap, whichever is later) — elapsed-in-cycle is
+        // cutting seconds, which excludes probe pauses. Mp1line dropping = restart.
+        var lineRows = samples.Where(s => s.DataItemId == "Mp1line" && s.Line != null).OrderBy(r => r.TsUtc).ToList();
+        DateTime? resetEvent = pulseTss.Count > 0 ? pulseTss[^1] : null;
+        long? prevLine = null;
+        foreach (var row in lineRows)
+        {
+            var cur = row.Line!.Value;
+            if (prevLine != null && cur < prevLine && (resetEvent == null || row.TsUtc > resetEvent))
+                resetEvent = row.TsUtc;
+            prevLine = cur;
+        }
+        double? cycleStartCut = null;
+        if (tcutRows.Count > 0)
+        {
+            if (resetEvent != null)
+            {
+                var anchor = tcutRows.OrderBy(r => Math.Abs((r.TsUtc - resetEvent.Value).TotalSeconds)).First();
+                if (Math.Abs((anchor.TsUtc - resetEvent.Value).TotalSeconds) <= 120)
+                    cycleStartCut = anchor.TotalCuttingTime;
+            }
+            else
+                cycleStartCut = tcutShiftStart; // no pulse/wrap yet this shift: assume shift start
+        }
+        var tcutLatest = tcutRows.LastOrDefault()?.TotalCuttingTime;
+        if (tcutLatest != null && cycleStartCut != null)
+            status.CurrentCycleSeconds = Math.Max(0, tcutLatest.Value - cycleStartCut.Value);
+        else if (pulseTss.Count > 0)
+            status.CurrentCycleSeconds = Math.Max(0, (nowUtc - pulseTss[^1]).TotalSeconds);
+        // else: leave null → view renders plain "in cycle" (nothing to anchor to)
+
         // ---- status color -----------------------------------------------------------
         if (!status.Online)
         {
             status.Color = StatusColor.Off;
             status.StatusReason = "No recent data from collector";
         }
-        else if (!status.SpindleRunning)
+        else if (!status.SpindleRunning && !status.IsMoving)
         {
+            // RED only when nothing active: no spindle rotation, no probe exemption,
+            // no commanded/observed machine motion
             status.Color = StatusColor.Red;
             status.StatusReason = "Spindle stopped";
         }
@@ -278,7 +363,7 @@ public class MetricsEngine
             var maxRate = status.MaxPartsPerHour!.Value;
             status.ExpectedParts = Math.Floor(maxRate * status.ShiftElapsedMinutes / 60.0);
             status.PercentOfExpected = status.ExpectedParts > 0
-                ? partsThisShift / status.ExpectedParts * 100
+                ? status.PartsThisShift / status.ExpectedParts * 100
                 : 0;
             if (status.PercentOfExpected >= cfg.GreenThresholdPercent)
             {
@@ -354,4 +439,29 @@ public class MetricsEngine
 
     private static bool IsExpiredStatus(string? status) =>
         status is not null && status is not ("AVAILABLE" or "NEW" or "USED");
+
+    // axis "moving now": any X/Y/Z position row within the last 10s whose value
+    // differs by more than 0.1 from the latest row before the window
+    private static bool AxisMovedRecently(List<Sample> samples, DateTime nowUtc)
+    {
+        var winStart = nowUtc - TimeSpan.FromSeconds(10);
+        foreach (var di in new[] { "MX1actm", "MY1actm", "MZ1actm" })
+        {
+            var axisRows = samples.Where(s => s.DataItemId == di).OrderBy(r => r.TsUtc).ToList();
+            var winLast = axisRows.LastOrDefault(s => s.TsUtc >= winStart);
+            if (winLast == null) continue;
+            var beforeWin = axisRows.LastOrDefault(s => s.TsUtc < winStart);
+            var a = AxisVal(winLast, di);
+            var b = beforeWin == null ? a : AxisVal(beforeWin, di);
+            if (Math.Abs(a - b) > 0.1) return true;
+        }
+        return false;
+    }
+
+    private static double AxisVal(Sample row, string di) => di switch
+    {
+        "MX1actm" => row.XAct ?? 0,
+        "MY1actm" => row.YAct ?? 0,
+        _ => row.ZAct ?? 0,
+    };
 }

@@ -38,27 +38,20 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<CncDbContext>();
     db.Database.EnsureCreated();
 
-    // additive schema patch for existing databases created before
-    // SpindleStopDelaySeconds existed (EnsureCreated only builds fresh DBs)
+    // additive schema patch for existing databases created before the new
+    // columns existed (EnsureCreated only builds fresh DBs)
     var sqconn = (SqliteConnection)db.Database.GetDbConnection();
     if (sqconn.State != ConnectionState.Open) await sqconn.OpenAsync();
-    using (var cmd = sqconn.CreateCommand())
-    {
-        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('MachineConfigs') WHERE name = 'SpindleStopDelaySeconds'";
-        if (Convert.ToInt32(await cmd.ExecuteScalarAsync()) == 0)
-        {
-            cmd.CommandText = "ALTER TABLE MachineConfigs ADD COLUMN SpindleStopDelaySeconds INTEGER NOT NULL DEFAULT 30";
-            await cmd.ExecuteNonQueryAsync();
-            Console.WriteLine("[schema] MachineConfigs.SpindleStopDelaySeconds added (default 30)");
-        }
-        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('MachineConfigs') WHERE name = 'ProbeToolNumber'";
-        if (Convert.ToInt32(await cmd.ExecuteScalarAsync()) == 0)
-        {
-            cmd.CommandText = "ALTER TABLE MachineConfigs ADD COLUMN ProbeToolNumber INTEGER NOT NULL DEFAULT 1";
-            await cmd.ExecuteNonQueryAsync();
-            Console.WriteLine("[schema] MachineConfigs.ProbeToolNumber added (default 1)");
-        }
-    }
+    await EnsureColumnAsync(sqconn, "MachineConfigs", "SpindleStopDelaySeconds", "INTEGER NOT NULL DEFAULT 30");
+    await EnsureColumnAsync(sqconn, "MachineConfigs", "ProbeToolNumber", "INTEGER NOT NULL DEFAULT 1");
+    await EnsureColumnAsync(sqconn, "MachineConfigs", "PartsThisShiftOverride", "INTEGER NULL");
+    await EnsureColumnAsync(sqconn, "Samples", "TotalCuttingTime", "REAL NULL");
+    await EnsureColumnAsync(sqconn, "Samples", "FeedCmd", "REAL NULL");
+    await EnsureColumnAsync(sqconn, "Samples", "XAct", "REAL NULL");
+    await EnsureColumnAsync(sqconn, "Samples", "YAct", "REAL NULL");
+    await EnsureColumnAsync(sqconn, "Samples", "ZAct", "REAL NULL");
+    await EnsureColumnAsync(sqconn, "Samples", "Line", "INTEGER NULL");
+    await EnsureColumnAsync(sqconn, "Samples", "Block", "TEXT NULL");
     if (sqconn.State == ConnectionState.Open) await sqconn.CloseAsync();
 
     if (!await db.Machines.AnyAsync())
@@ -112,3 +105,15 @@ app.MapGet("/api/status/{segment}", async (string segment, MachineResolver resol
 app.MapRazorPages();
 
 app.Run();
+
+static async Task EnsureColumnAsync(SqliteConnection conn, string table, string column, string decl)
+{
+    using var cmd = conn.CreateCommand();
+    cmd.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'";
+    if (Convert.ToInt32(await cmd.ExecuteScalarAsync()) == 0)
+    {
+        cmd.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {decl}";
+        await cmd.ExecuteNonQueryAsync();
+        Console.WriteLine($"[schema] {table}.{column} added ({decl})");
+    }
+}
