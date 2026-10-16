@@ -66,7 +66,7 @@ public class ShiftHistoryService : BackgroundService
             if (cfg is null) continue;
             var tz = ShiftEngine.GetTz(cfg.TimeZone);
             var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, tz);
-            var today = DateOnly.FromDateTime(nowLocal);
+            var today = nowLocal.Date;
 
             // check today's shifts AND yesterday's (a 23:50-07:00 overnight shift
             // with a 6am server blip could straddle) — but only those whose END
@@ -142,8 +142,8 @@ public class ShiftHistoryService : BackgroundService
 
     private async Task PruneSamplesAsync(CancellationToken ct)
     {
-        const int retentionDays = int.TryParse(
-            Environment.GetEnvironmentVariable("SAMPLE_RETENTION_DAYS"), out var d) ? d : 7;
+        var retentionDaysRaw = Environment.GetEnvironmentVariable("SAMPLE_RETENTION_DAYS");
+        int retentionDays = int.TryParse(retentionDaysRaw, out var rd) ? rd : 7;
 
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<CncDbContext>();
@@ -161,12 +161,12 @@ public class ShiftHistoryService : BackgroundService
         foreach (var g in cutoffSafe)
         {
             if (!g.Recent) continue; // machine's whole history is old: keep everything
-            var d = await db.Samples
+            var removed = await db.Samples
                 .Where(s => s.MachineId == g.MachineId && s.TsUtc < cutoff)
                 .OrderByDescending(s => s.TsUtc)
                 .Skip(1000)
                 .ExecuteDeleteAsync(ct);
-            deleted += d;
+            deleted += removed;
         }
 
         if (deleted > 0)

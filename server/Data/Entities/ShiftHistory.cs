@@ -16,8 +16,8 @@ public class ShiftHistory
     // which configured shift (1..3)
     public int ShiftNumber { get; set; }
 
-    // the LOCAL calendar date this shift ran on (e.g. 2026-10-15)
-    public DateOnly LocalDate { get; set; }
+    // the LOCAL calendar date this shift ran on (e.g. 2026-10-15T00:00:00 local)
+    public DateTime LocalDate { get; set; }
 
     public DateTime StartUtc { get; set; }
     public DateTime EndUtc { get; set; }
