@@ -62,6 +62,21 @@ using (var scope = app.Services.CreateScope())
     await EnsureColumnAsync(sqconn, "Samples", "PartsTally", "REAL NULL");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "PartsTallyVarIndex", "INTEGER NOT NULL DEFAULT 41");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "CycleVarIndex", "INTEGER NOT NULL DEFAULT 0");
+
+    // ShiftHistories table: EnsureCreated only builds fresh DBs; create if absent
+    await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""ShiftHistories"" (
+        ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_ShiftHistories"" PRIMARY KEY AUTOINCREMENT,
+        ""MachineId"" TEXT NOT NULL,
+        ""ShiftNumber"" INTEGER NOT NULL,
+        ""LocalDate"" TEXT NOT NULL,
+        ""StartUtc"" TEXT NOT NULL,
+        ""EndUtc"" TEXT NOT NULL,
+        ""PartsAtStart"" INTEGER NOT NULL,
+        ""PartsAtEnd"" INTEGER NOT NULL,
+        ""PartsCount"" INTEGER NOT NULL,
+        ""CapturedUtc"" TEXT NOT NULL,
+        ""AnchorsJson"" TEXT NULL
+    )");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "StationsVarIndex", "INTEGER NOT NULL DEFAULT 40");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "PartNameVarIndex", "INTEGER NOT NULL DEFAULT 65");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "QuotaParts", "INTEGER NOT NULL DEFAULT 48");
