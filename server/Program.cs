@@ -22,6 +22,8 @@ builder.Services.AddSingleton<MetricsEngine>();
 builder.Services.AddHttpClient("alarmfeed");
 builder.Services.AddSingleton<AlarmFeedService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AlarmFeedService>());
+builder.Services.AddSingleton<ShiftHistoryService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ShiftHistoryService>());
 
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -119,6 +121,27 @@ app.MapGet("/api/alarmfeed", (AlarmFeedService feed) =>
 {
     var snap = feed.Snapshot();
     return snap is null ? Results.NotFound() : Results.Ok(snap);
+});
+
+// captured shift history for a machine — newest first, optional limit
+app.MapGet("/api/shifthistory/{machineId}", async (string machineId, int? limit, IServiceScopeFactory scopes) =>
+{
+    using var scope = scopes.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<CncDbContext>();
+    var rows = await db.ShiftHistories.AsNoTracking()
+        .Where(h => h.MachineId == machineId)
+        .OrderByDescending(h => h.StartUtc)
+        .Take(limit is > 0 and < 100 ? limit.Value : 14)
+        .Select(h => new
+        {
+            localDate = h.LocalDate.ToString("yyyy-MM-dd"),
+            shift = h.ShiftNumber,
+            startUtc = h.StartUtc,
+            endUtc = h.EndUtc,
+            parts = h.PartsCount,
+        })
+        .ToListAsync();
+    return rows.Count == 0 ? Results.NotFound() : Results.Ok(rows);
 });
 
 app.MapRazorPages();

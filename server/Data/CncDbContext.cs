@@ -11,6 +11,7 @@ public class CncDbContext : DbContext
     public DbSet<MachineConfig> MachineConfigs => Set<MachineConfig>();
     public DbSet<Sample> Samples => Set<Sample>();
     public DbSet<ToolAsset> ToolAssets => Set<ToolAsset>();
+    public DbSet<ShiftHistory> ShiftHistories => Set<ShiftHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
