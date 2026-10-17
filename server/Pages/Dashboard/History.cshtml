@@ -1,0 +1,55 @@
+@page "/dashboard/{machine?}/history"
+@model CncDash.Server.Pages.Dashboard.HistoryModel
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CNC Shift History</title>
+    <link rel="stylesheet" href="/dashboard.css?v=11" />
+</head>
+<body>
+<div class="wrap">
+    <div class="topbar">
+        <a href="/dashboard/@Model.MachineId">&larr; live dashboard</a>
+        <span class="machine">@Model.DisplayName &mdash; shift history</span>
+        <span class="right updated"></span>
+    </div>
+
+    <div class="card wide">
+        <div class="label">Final part counts per shift (captured at tally reset)</div>
+        <div class="tools-scroll">
+            <table class="tools" id="hist">
+                <thead>
+                    <tr><th>Date</th><th>Shift</th><th>Window</th><th>Parts</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div class="sub" id="hist-empty" style="display:none">No captured shifts yet — rows appear after each shift's tally reset (≈6:20am, 2:20pm, 10:20pm).</div>
+    </div>
+</div>
+
+<script>
+(function () {
+    fetch("/api/shifthistory/@Model.MachineId?limit=60", { cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (rows) {
+            var tb = document.querySelector("#hist tbody");
+            if (!rows || !rows.length) {
+                document.getElementById("hist-empty").style.display = "";
+                return;
+            }
+            tb.innerHTML = rows.map(function (r) {
+                var win = new Date(r.startUtc).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) +
+                    " – " + new Date(r.endUtc).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                return "<tr><td>" + r.localDate + "</td><td>Shift " + r.shift + "</td><td class=\"muted\">" + win + "</td><td><b>" + r.parts + "</b></td></tr>";
+            }).join("");
+        }).catch(function () {
+            document.getElementById("hist-empty").style.display = "";
+        });
+})();
+</script>
+</body>
+</html>

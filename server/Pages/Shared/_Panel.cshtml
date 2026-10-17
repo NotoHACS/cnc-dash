@@ -72,7 +72,7 @@
     <div class="card">
         <div class="label">Parts this shift</div>
         <div class="big">@s.PartsThisShift</div>
-        <div class="sub">@s.ExpectedParts expected by now</div>
+        <div class="sub">@s.ExpectedParts expected by now &middot; <a href="/dashboard/@s.MachineId/history">history</a></div>
     </div>
     <div class="card">
         <div class="label">Efficiency</div>
@@ -123,27 +123,6 @@
 </div>
 
 @* Alarm bar markup lives at panel top (above the cycle card) — see alarmbar div there. *@
-<div class="wide" id="shifthist" style="display:none">
-    <div class="label">Shift history (final part counts)</div>
-    <div id="shifthist-rows"></div>
-</div>
-<script>
-(function () {
-    function esc(t) { return (t || "").replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
-    fetch("/api/shifthistory/cnc12", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (rows) {
-        if (!rows || !rows.length) return;
-        var el = document.getElementById("shifthist");
-        el.style.display = "";
-        el.innerHTML = rows.map(function (r) {
-            return '<div class="sh-row" style="display:flex;gap:14px;padding:6px 0;border-bottom:1px solid var(--line)">' +
-                '<span class="sh-date" style="color:var(--muted);min-width:96px">' + esc(r.localDate) + '</span>' +
-                '<span class="sh-shift" style="min-width:64px">Shift ' + r.shift + '</span>' +
-                '<span class="sh-parts" style="font-weight:700;font-size:17px">' + r.parts + ' parts</span>' +
-                '</div>';
-        }).join("");
-    }).catch(function () { });
-})();
-</script>
 @* Alarm bar: server subscribes to the ntfy topic (AlarmFeedService) and
    exposes the latest message; this polls the local API, not ntfy directly. *@
 <script>

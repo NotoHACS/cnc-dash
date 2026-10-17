@@ -84,19 +84,70 @@ public class ShiftHistoryService : BackgroundService
                         h => h.MachineId == m.Id && h.LocalDate == date && h.ShiftNumber == n, ct);
                     if (exists) continue;
 
-                    // capture
+                    // capture — RESET-ANCHORED, per operator: the machine app
+                    // resets its tally ~20min AFTER the shift boundary (06:00
+                    // shift -> reset ~06:22; carryover from the previous shift
+                    // sits in the tally until then). So: find the CLOSING reset
+                    // (drop to ~0 after a >5 reading) inside [end-5min,
+                    // end+35min]; the shift's parts = peak tally between the
+                    // previous reset (or window start) and that closing reset.
+                    var winStartExt = win.StartUtc - TimeSpan.FromMinutes(35);
+                    var winEndExt = win.EndUtc + TimeSpan.FromMinutes(35);
                     var tallyRows = await db.Samples.AsNoTracking()
                         .Where(s => s.MachineId == m.Id && s.DataItemId == "Mp1CommonVariable" && s.PartsTally != null
-                                    && s.TsUtc >= win.StartUtc && s.TsUtc <= win.EndUtc)
+                                    && s.TsUtc >= winStartExt && s.TsUtc <= winEndExt)
                         .OrderBy(s => s.TsUtc).ToListAsync(ct);
 
-                    var start = tallyRows.FirstOrDefault()?.PartsTally ?? 0;
-                    var peak = tallyRows.Count > 0 ? tallyRows.Max(r => r.PartsTally!.Value) : 0;
-                    // baseline = the tally at the very first reading (app usually
-                    // resets at shift start so it's 0; if the collector joined
-                    // mid-shift, baseline prevents counting pre-existing parts)
-                    var partsAtStart = (long)Math.Max(0, Math.Round(start));
-                    var partsAtEnd = (long)Math.Max(0, Math.Round(peak));
+                    // find all reset moments: reading <=2 preceded by a >5 within 2 min
+                    var resets = new List<DateTime>();
+                    double prevTally = 0;
+                    DateTime prevTs = DateTime.MinValue;
+                    foreach (var r in tallyRows)
+                    {
+                        var v = r.PartsTally!.Value;
+                        if (v <= 2 && prevTally > 5 && (r.TsUtc - prevTs).TotalMinutes <= 2)
+                            resets.Add(r.TsUtc);
+                        if (v > 0) { prevTally = v; prevTs = r.TsUtc; }
+                    }
+
+                    // closing reset = last reset in [end-5min, end+35min]
+                    var closingReset = resets.LastOrDefault(ts =>
+                        ts >= win.EndUtc - TimeSpan.FromMinutes(5) &&
+                        ts <= win.EndUtc + TimeSpan.FromMinutes(35));
+
+                    double peakBeforeClosing;
+                    double startAfterOpening;
+                    if (closingReset != default)
+                    {
+                        // opening reset = latest reset before the closing one that is
+                        // still after (window start - 35min)… strictly, the previous
+                        // reset OR the extended window start
+                        var earlier = resets.Where(ts => ts < closingReset).ToList();
+                        var opening = earlier.Count > 0 ? earlier[^1] : winStartExt;
+                        peakBeforeClosing = tallyRows
+                            .Where(r => r.TsUtc > opening && r.TsUtc < closingReset)
+                            .Select(r => r.PartsTally!.Value)
+                            .DefaultIfEmpty(0).Max();
+                        // start value: first reading at/after the opening reset
+                        startAfterOpening = tallyRows
+                            .Where(r => r.TsUtc >= opening && r.TsUtc < closingReset)
+                            .Select(r => r.PartsTally!.Value)
+                            .DefaultIfEmpty(0).FirstOrDefault();
+                    }
+                    else
+                    {
+                        // no closing reset observed (collector gap?): fall back to
+                        // peak/max within the shift window proper
+                        var inWindow = tallyRows.Where(r => r.TsUtc >= win.StartUtc && r.TsUtc <= win.EndUtc).ToList();
+                        peakBeforeClosing = inWindow.Count > 0 ? inWindow.Max(r => r.PartsTally!.Value) : 0;
+                        startAfterOpening = inWindow.FirstOrDefault()?.PartsTally ?? 0;
+                    }
+
+                    // PartsAtStart = tally right after the opening reset (~0, but
+                    // recorded honestly); PartsAtEnd = peak before the closing
+                    // reset — that is the final count the operator cares about.
+                    var partsAtStart = (long)Math.Max(0, Math.Round(startAfterOpening));
+                    var partsAtEnd = (long)Math.Max(0, Math.Round(peakBeforeClosing));
 
                     string? anchorsJson = null;
                     if (cfg.CycleVarIndex > 0)
