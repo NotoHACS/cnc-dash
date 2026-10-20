@@ -33,17 +33,10 @@
 
 <script>
 (function () {
-    // times come pre-converted to the MACHINE's local time by the API
-    // (startLocal/endLocal) — never re-localize them in the browser, or a
-    // UTC-locale viewer sees the shift 4-5 hours off.
-    function fmt(iso, withDay) {
-        if (!iso) return "—";
-        var d = new Date(iso);
-        var t = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
-        if (!withDay) return t;
-        var day = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
-        return day + " " + t;
-    }
+    // Times arrive PRE-FORMATTED in the machine's local time (server does the
+    // conversion). Print them verbatim — never run them through new Date()
+    // here, or the browser reinterprets them in the viewer's timezone and
+    // every window shifts by your UTC offset.
     fetch("/api/shifthistory/@Model.MachineId?limit=60", { cache: "no-store" })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (rows) {
@@ -55,11 +48,10 @@
             tb.innerHTML = rows.map(function (r) {
                 // window = first cycle START -> last cycle END (falls back to
                 // the shift window if cycle timing wasn't captured)
-                var s0 = r.firstCycleStartLocal || r.startLocal;
-                var e0 = r.lastCycleEndLocal || r.endLocal;
-                var win = fmt(s0, true) + " – " + fmt(e0, false);
+                var s0 = r.firstCycleStartLocal || r.startLocal || "—";
+                var e0 = r.lastCycleEndLocal || r.endLocal || "—";
                 return "<tr><td>" + r.localDate + "</td><td>Shift " + r.shift + "</td>" +
-                    "<td class=\"muted\">" + win + "</td>" +
+                    "<td class=\"muted\">" + s0 + " – " + e0 + "</td>" +
                     "<td>" + (r.partName || "—") + "</td>" +
                     "<td class=\"muted\">" + (r.program || "—") + "</td>" +
                     "<td><b>" + r.parts + "</b></td></tr>";

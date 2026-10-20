@@ -170,15 +170,16 @@ app.MapGet("/api/shifthistory/{machineId}", async (string machineId, int? limit,
             // ACTUAL machine boundaries (tally resets) — null if not observed
             openResetUtc = h.OpenResetUtc,
             closeResetUtc = h.CloseResetUtc,
-            // shift window already converted to the MACHINE's local time —
-            // the browser may be in a different zone (UTC vs EDT = 4h off)
-            startLocal = TimeZoneInfo.ConvertTimeFromUtc(h.StartUtc, tz).ToString("o"),
-            endLocal = TimeZoneInfo.ConvertTimeFromUtc(h.EndUtc, tz).ToString("o"),
-            openResetLocal = h.OpenResetUtc == null ? null : TimeZoneInfo.ConvertTimeFromUtc(h.OpenResetUtc.Value, tz).ToString("o"),
-            closeResetLocal = h.CloseResetUtc == null ? null : TimeZoneInfo.ConvertTimeFromUtc(h.CloseResetUtc.Value, tz).ToString("o"),
+            // DISPLAY STRINGS, pre-formatted in the MACHINE's local time by the
+            // server. The browser must NOT do date math on these — a naive
+            // new Date() reinterprets them in the viewer's zone (4h off).
+            startLocal = FmtLocal(h.StartUtc, tz),
+            endLocal = FmtLocal(h.EndUtc, tz),
+            openResetLocal = h.OpenResetUtc == null ? null : FmtLocal(h.OpenResetUtc.Value, tz),
+            closeResetLocal = h.CloseResetUtc == null ? null : FmtLocal(h.CloseResetUtc.Value, tz),
             // the window we display: first cycle start -> last cycle end
-            firstCycleStartLocal = h.FirstCycleStartUtc == null ? null : TimeZoneInfo.ConvertTimeFromUtc(h.FirstCycleStartUtc.Value, tz).ToString("o"),
-            lastCycleEndLocal = h.LastCycleEndUtc == null ? null : TimeZoneInfo.ConvertTimeFromUtc(h.LastCycleEndUtc.Value, tz).ToString("o"),
+            firstCycleStartLocal = h.FirstCycleStartUtc == null ? null : FmtLocal(h.FirstCycleStartUtc.Value, tz),
+            lastCycleEndLocal = h.LastCycleEndUtc == null ? null : FmtLocal(h.LastCycleEndUtc.Value, tz),
             partName = h.PartName,
             program = h.Program,
             parts = h.PartsCount,
@@ -186,6 +187,14 @@ app.MapGet("/api/shifthistory/{machineId}", async (string machineId, int? limit,
         .ToListAsync();
     return rows.Count == 0 ? Results.NotFound() : Results.Ok(rows);
 });
+
+// format a UTC instant as a display string in the MACHINE's local time
+// ("Mon Oct 20 07:28" / "14:53") — the browser prints it verbatim
+static string FmtLocal(DateTime utc, TimeZoneInfo tz)
+{
+    var l = TimeZoneInfo.ConvertTimeFromUtc(utc, tz);
+    return l.ToString("ddd MMM dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+}
 
 app.MapRazorPages();
 
