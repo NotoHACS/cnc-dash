@@ -156,9 +156,13 @@ public class ShiftHistoryService : BackgroundService
                 if (exists) continue;
 
                 // parts: B-rule — increments whose BATCH START falls in this
-                // window. Batch k = [swap_k, swap_k+1).
+                // window. Batch k = [swap_k, swap_k+1). We also track the first
+                // batch start and the last batch END (the increment time of the
+                // final part) for the displayed window.
                 long parts = 0;
                 var usedBatchStarts = new List<DateTime>();
+                DateTime? firstCycleStart = null;
+                DateTime? lastCycleEnd = null;
                 if (batchStarts.Count > 0)
                 {
                     for (int i = 0; i < batchStarts.Count; i++)
@@ -166,8 +170,14 @@ public class ShiftHistoryService : BackgroundService
                         var bs = batchStarts[i];
                         if (bs < w.Start || bs >= w.End) continue;
                         var be = i + 1 < batchStarts.Count ? batchStarts[i + 1] : nowUtc;
-                        var n = increments.Count(x => x >= bs && x < be);
-                        if (n > 0) { parts += n; usedBatchStarts.Add(bs); }
+                        var batchIncs = increments.Where(x => x >= bs && x < be).ToList();
+                        if (batchIncs.Count > 0)
+                        {
+                            parts += batchIncs.Count;
+                            usedBatchStarts.Add(bs);
+                            firstCycleStart ??= bs;
+                            lastCycleEnd = batchIncs[^1];
+                        }
                     }
                 }
                 else
@@ -227,6 +237,8 @@ public class ShiftHistoryService : BackgroundService
                     EndUtc = w.End,
                     OpenResetUtc = openReset == default ? null : openReset,
                     CloseResetUtc = closeReset == default ? null : closeReset,
+                    FirstCycleStartUtc = firstCycleStart,
+                    LastCycleEndUtc = lastCycleEnd,
                     PartsAtStart = 0,
                     PartsAtEnd = parts,
                     PartsCount = parts,

@@ -53,12 +53,13 @@
                 return;
             }
             tb.innerHTML = rows.map(function (r) {
-                var s0 = r.openResetLocal || r.startLocal;
-                var e0 = r.closeResetLocal || r.endLocal;
+                // window = first cycle START -> last cycle END (falls back to
+                // the shift window if cycle timing wasn't captured)
+                var s0 = r.firstCycleStartLocal || r.startLocal;
+                var e0 = r.lastCycleEndLocal || r.endLocal;
                 var win = fmt(s0, true) + " – " + fmt(e0, false);
-                var actual = r.openResetLocal && r.closeResetLocal;
                 return "<tr><td>" + r.localDate + "</td><td>Shift " + r.shift + "</td>" +
-                    "<td class=\"muted\"" + (actual ? " title=\"actual tally-reset window\"" : " title=\"configured shift window (reset not observed)\"") + ">" + win + "</td>" +
+                    "<td class=\"muted\">" + win + "</td>" +
                     "<td>" + (r.partName || "—") + "</td>" +
                     "<td class=\"muted\">" + (r.program || "—") + "</td>" +
                     "<td><b>" + r.parts + "</b></td></tr>";

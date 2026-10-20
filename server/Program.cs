@@ -66,6 +66,8 @@ using (var scope = app.Services.CreateScope())
     await EnsureColumnAsync(sqconn, "ShiftHistories", "CloseResetUtc", "TEXT NULL");
     await EnsureColumnAsync(sqconn, "ShiftHistories", "PartName", "TEXT NULL");
     await EnsureColumnAsync(sqconn, "ShiftHistories", "Program", "TEXT NULL");
+    await EnsureColumnAsync(sqconn, "ShiftHistories", "FirstCycleStartUtc", "TEXT NULL");
+    await EnsureColumnAsync(sqconn, "ShiftHistories", "LastCycleEndUtc", "TEXT NULL");
 
     // ShiftHistories table: EnsureCreated only builds fresh DBs; create if absent
     await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""ShiftHistories"" (
@@ -83,7 +85,9 @@ using (var scope = app.Services.CreateScope())
         ""OpenResetUtc"" TEXT NULL,
         ""CloseResetUtc"" TEXT NULL,
         ""PartName"" TEXT NULL,
-        ""Program"" TEXT NULL
+        ""Program"" TEXT NULL,
+        ""FirstCycleStartUtc"" TEXT NULL,
+        ""LastCycleEndUtc"" TEXT NULL
     )");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "StationsVarIndex", "INTEGER NOT NULL DEFAULT 40");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "PartNameVarIndex", "INTEGER NOT NULL DEFAULT 65");
@@ -172,6 +176,9 @@ app.MapGet("/api/shifthistory/{machineId}", async (string machineId, int? limit,
             endLocal = TimeZoneInfo.ConvertTimeFromUtc(h.EndUtc, tz).ToString("o"),
             openResetLocal = h.OpenResetUtc == null ? null : TimeZoneInfo.ConvertTimeFromUtc(h.OpenResetUtc.Value, tz).ToString("o"),
             closeResetLocal = h.CloseResetUtc == null ? null : TimeZoneInfo.ConvertTimeFromUtc(h.CloseResetUtc.Value, tz).ToString("o"),
+            // the window we display: first cycle start -> last cycle end
+            firstCycleStartLocal = h.FirstCycleStartUtc == null ? null : TimeZoneInfo.ConvertTimeFromUtc(h.FirstCycleStartUtc.Value, tz).ToString("o"),
+            lastCycleEndLocal = h.LastCycleEndUtc == null ? null : TimeZoneInfo.ConvertTimeFromUtc(h.LastCycleEndUtc.Value, tz).ToString("o"),
             partName = h.PartName,
             program = h.Program,
             parts = h.PartsCount,

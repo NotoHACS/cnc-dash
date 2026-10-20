@@ -29,6 +29,11 @@ public class ShiftHistory
     public DateTime? OpenResetUtc { get; set; }
     public DateTime? CloseResetUtc { get; set; }
 
+    // the window the operator cares about: when the FIRST cycle of the shift
+    // started, and when the LAST cycle of the shift ended
+    public DateTime? FirstCycleStartUtc { get; set; }
+    public DateTime? LastCycleEndUtc { get; set; }
+
     // tally value at window start (usually 0 — the app resets) and peak inside
     public long PartsAtStart { get; set; }
     public long PartsAtEnd { get; set; }
