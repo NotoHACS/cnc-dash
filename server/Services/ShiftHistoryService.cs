@@ -6,12 +6,21 @@ using System.Text.Json;
 namespace CncDash.Server.Services;
 
 // Two background duties in one loop:
-//  1. SHIFT HISTORY: when local time passes a configured shift end, capture one
-//     ShiftHistory row (machine, date, shift#, part count from PartsTally
-//     max-inside-window minus baseline, plus VC3 anchor timestamps) — idempotent
-//     via a unique check before insert.
+//  1. SHIFT HISTORY: for every configured shift window, count the parts whose
+//     BATCH STARTED inside that window. The machine increments its tally when
+//     a batch COMPLETES, so a batch that starts at 13:59 and finishes at
+//     14:32 lands in the 2nd shift's counter — but the operator wants it
+//     credited to the 1st shift (the shift that started it). We get that by
+//     pairing each part increment with the pallet-swap (cycle var) change that
+//     opened its batch: batch k spans [swap_k, swap_k+1) and its parts are the
+//     tally increments inside that interval. Attribution = the shift window
+//     containing swap_k.
+//
+//     The tally resets ~3 min after each shift boundary and the reset time
+//     DRIFTS (06:22 -> 07:28 over days), so the stored window uses the actual
+//     reset-to-reset pair (what the machine really did), never the nominal one.
 //  2. SAMPLES RETENTION: delete Samples older than SAMPLE_RETENTION_DAYS
-//     (default 7) and reclaim space with a WAL checkpoint. Runs once per hour.
+//     (default 7) with a per-machine floor of the newest 1000 rows.
 public class ShiftHistoryService : BackgroundService
 {
     private readonly IServiceScopeFactory scopes;
@@ -28,7 +37,6 @@ public class ShiftHistoryService : BackgroundService
         // small startup delay so migrations/hosted services settle
         try { await Task.Delay(TimeSpan.FromSeconds(20), stoppingToken); } catch { }
 
-        var lastCheck = DateTime.UtcNow - TimeSpan.FromMinutes(6); // first pass checks last ~6 min + startup
         var nextPrune = DateTime.UtcNow.AddMinutes(5);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -66,145 +74,146 @@ public class ShiftHistoryService : BackgroundService
             if (cfg is null) continue;
             var tz = ShiftEngine.GetTz(cfg.TimeZone);
             var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, tz);
-            var today = nowLocal.Date;
 
-            // check today's shifts AND yesterday's (a 23:50-07:00 overnight shift
-            // with a 6am server blip could straddle) — but only those whose END
-            // has passed and which have no row yet
-            for (int dayBack = 0; dayBack <= 1; dayBack++)
+            // one query for the last 3 days of common-var rows (tally + vars)
+            var from = nowUtc.AddDays(-3);
+            var rows = await db.Samples.AsNoTracking()
+                .Where(s => s.MachineId == m.Id && s.DataItemId == "Mp1CommonVariable" && s.TsUtc >= from)
+                .OrderBy(s => s.TsUtc).ToListAsync(ct);
+            if (rows.Count == 0) continue;
+
+            // ---- tally resets (the machine's actual shift boundaries) -------
+            var resets = new List<DateTime>();
+            bool armed = true;
+            double lastNonzero = 0;
+            DateTime lastNonzeroTs = DateTime.MinValue;
+            foreach (var r in rows)
             {
-                var date = today.AddDays(-dayBack);
+                var v = r.PartsTally ?? 0;
+                if (v > 2) { lastNonzero = v; lastNonzeroTs = r.TsUtc; armed = true; }
+                else if (armed && v <= 2 && lastNonzero > 5
+                         && (r.TsUtc - lastNonzeroTs).TotalMinutes <= 2)
+                {
+                    resets.Add(r.TsUtc);
+                    armed = false;
+                }
+            }
+            if (resets.Count == 0) continue;
+
+            // ---- tally increments (one per part) ----------------------------
+            var increments = new List<DateTime>();
+            double prevTally = 0;
+            foreach (var r in rows)
+            {
+                var t = r.PartsTally ?? 0;
+                if (t > prevTally + 0.5)
+                {
+                    var n = (int)Math.Round(t - prevTally);
+                    for (int i = 0; i < n; i++) increments.Add(r.TsUtc);
+                }
+                prevTally = t;
+            }
+
+            // ---- batch starts (pallet swap = cycle-var change) -------------
+            var batchStarts = new List<DateTime>();
+            if (cfg.CycleVarIndex > 0)
+            {
+                var prefix = cfg.CycleVarIndex.ToString() + "=";
+                long? lastNonZeroVar = null;
+                foreach (var r in rows)
+                {
+                    if (r.CommonVars is null) continue;
+                    var v = CommonVarValueLong(r.CommonVars, prefix);
+                    if (v is null || v <= 0) continue;
+                    if (lastNonZeroVar.HasValue && v.Value != lastNonZeroVar.Value)
+                        batchStarts.Add(r.TsUtc); // new pallet = new batch
+                    lastNonZeroVar = v.Value;
+                }
+            }
+
+            // ---- shift windows to attribute into ---------------------------
+            var windows = new List<(int Num, DateTime Date, DateTime Start, DateTime End)>();
+            for (int dayBack = 3; dayBack >= 0; dayBack--)
+            {
+                var date = nowLocal.Date.AddDays(-dayBack);
                 for (int n = 1; n <= 3; n++)
                 {
-                    var win = ShiftEngine.ShiftOnDate(cfg, n, date);
-                    if (win is null) continue;
-                    if (win.EndUtc > nowUtc) continue; // still running
-
-                    var exists = await db.ShiftHistories.AsNoTracking().AnyAsync(
-                        h => h.MachineId == m.Id && h.LocalDate == date && h.ShiftNumber == n, ct);
-                    if (exists) continue;
-
-                    // capture — RESET-ANCHORED, per operator: the machine app's
-                    // tally resets shortly after each SHIFT START (06:22 closes
-                    // shift3's count, ~14:05 closes shift1's, ~22:15 closes
-                    // shift2's — carryover sits in the tally until then). So for
-                    // shift N: opening reset ∈ [start, start+35min], closing
-                    // reset ∈ [end-35min, end+5min], and parts = the tally PEAK
-                    // strictly between them (the tally zeroes at the opening
-                    // reset and climbs all shift, so peak = final count).
-                    var winStartExt = win.StartUtc - TimeSpan.FromMinutes(35);
-                    var winEndExt = win.EndUtc + TimeSpan.FromMinutes(35);
-                    var tallyRows = await db.Samples.AsNoTracking()
-                        .Where(s => s.MachineId == m.Id && s.DataItemId == "Mp1CommonVariable" && s.PartsTally != null
-                                    && s.TsUtc >= winStartExt && s.TsUtc <= winEndExt)
-                        .OrderBy(s => s.TsUtc).ToListAsync(ct);
-
-                    // has any positive tally at all? (machines without tally data
-                    // — e.g. cnc13 pre-adapter-fix — would produce 0-part noise)
-                    if (!tallyRows.Any(r => r.PartsTally > 0))
-                        continue;
-
-                    // reset EPISODES: first <=2 reading after a >5 within 2 min,
-                    // rearmed only when tally climbs back above 2
-                    var episodes = new List<DateTime>();
-                    bool armed = true;
-                    double lastNonzero = 0;
-                    DateTime lastNonzeroTs = DateTime.MinValue;
-                    foreach (var r in tallyRows)
-                    {
-                        var v = r.PartsTally!.Value;
-                        if (v > 2)
-                        {
-                            lastNonzero = v;
-                            lastNonzeroTs = r.TsUtc;
-                            armed = true;
-                        }
-                        else if (armed && v <= 2 && lastNonzero > 5
-                                 && (r.TsUtc - lastNonzeroTs).TotalMinutes <= 2)
-                        {
-                            episodes.Add(r.TsUtc);
-                            armed = false; // stay disarmed while tally sits at 0
-                        }
-                    }
-
-                    // The machine's shift boundary IS the tally reset, and the
-                    // reset timing DRIFTS (06:22 → 07:28 within days), so do
-                    // not bracket tightly around the nominal window: resets are
-                    // ~8h apart, so a 130-min bracket holds at most one — the
-                    // reset that OPENED this shift. The next reset after it
-                    // CLOSED the shift. Parts = tally peak between the pair.
-                    DateTime? openReset = episodes.FirstOrDefault(ts =>
-                        ts >= win.StartUtc - TimeSpan.FromMinutes(40) &&
-                        ts <= win.StartUtc + TimeSpan.FromMinutes(90));
-                    DateTime? closeReset = openReset != null
-                        ? episodes.FirstOrDefault(ts => ts > openReset.Value)
-                        : null;
-                    if (closeReset != null && (closeReset.Value - openReset!.Value) > TimeSpan.FromHours(12))
-                        closeReset = null; // machine was idle for days — not a shift pair
-
-                    double peak;
-                    if (openReset != null && closeReset != null && closeReset > openReset)
-                    {
-                        peak = tallyRows
-                            .Where(r => r.TsUtc > openReset && r.TsUtc < closeReset)
-                            .Select(r => r.PartsTally!.Value)
-                            .DefaultIfEmpty(0).Max();
-                    }
-                    else
-                    {
-                        // fallback: no clean reset pair (collector gap) — peak
-                        // within the shift window proper
-                        peak = tallyRows
-                            .Where(r => r.TsUtc >= win.StartUtc && r.TsUtc <= win.EndUtc)
-                            .Select(r => r.PartsTally!.Value)
-                            .DefaultIfEmpty(0).Max();
-                    }
-
-                    // PartsAtStart = tally right after the opening reset (0 by
-                    // construction); PartsAtEnd = peak — the final count.
-                    var partsAtStart = 0L;
-                    var partsAtEnd = (long)Math.Max(0, Math.Round(peak));
-
-                    string? anchorsJson = null;
-                    if (cfg.CycleVarIndex > 0)
-                    {
-                        var prefix = cfg.CycleVarIndex.ToString() + "=";
-                        long? prevV = null;
-                        var anchors = new List<DateTime>();
-                        foreach (var s in await db.Samples.AsNoTracking()
-                            .Where(s => s.MachineId == m.Id && s.DataItemId == "Mp1CommonVariable" && s.CommonVars != null
-                                        && s.TsUtc >= win.StartUtc && s.TsUtc <= win.EndUtc)
-                            .OrderBy(s => s.TsUtc).ToListAsync(ct))
-                        {
-                            var v = CommonVarValueLong(s.CommonVars!, prefix);
-                            if (v.HasValue)
-                            {
-                                if (prevV.HasValue && v.Value != prevV.Value) anchors.Add(s.TsUtc);
-                                prevV = v.Value;
-                            }
-                        }
-                        anchorsJson = JsonSerializer.Serialize(anchors);
-                    }
-
-                    db.ShiftHistories.Add(new Data.Entities.ShiftHistory
-                    {
-                        MachineId = m.Id,
-                        ShiftNumber = n,
-                        LocalDate = date,
-                        StartUtc = win.StartUtc,
-                        EndUtc = win.EndUtc,
-                        OpenResetUtc = openReset,
-                        CloseResetUtc = closeReset,
-                        PartsAtStart = partsAtStart,
-                        PartsAtEnd = partsAtEnd,
-                        PartsCount = Math.Max(0, partsAtEnd - partsAtStart),
-                        CapturedUtc = nowUtc,
-                        AnchorsJson = anchorsJson,
-                    });
-                    await db.SaveChangesAsync(ct);
-                    log.LogInformation("shift history captured: {Machine} {Date} shift{N} parts={P}",
-                        m.Id, date, n, partsAtEnd - partsAtStart);
+                    var w = ShiftEngine.ShiftOnDate(cfg, n, date);
+                    if (w is null) continue;
+                    windows.Add((n, date, w.StartUtc, w.EndUtc));
                 }
+            }
+
+            foreach (var w in windows)
+            {
+                // capture a shift once it ended AND had time to finish an
+                // in-flight batch (45 min grace) — otherwise a straddling
+                // batch's parts could still arrive after we snapshot
+                if (w.End + TimeSpan.FromMinutes(45) > nowUtc) continue;
+
+                var exists = await db.ShiftHistories.AsNoTracking().AnyAsync(
+                    h => h.MachineId == m.Id && h.LocalDate == w.Date && h.ShiftNumber == w.Num, ct);
+                if (exists) continue;
+
+                // parts: B-rule — increments whose BATCH START falls in this
+                // window. Batch k = [swap_k, swap_k+1).
+                long parts = 0;
+                var usedBatchStarts = new List<DateTime>();
+                if (batchStarts.Count > 0)
+                {
+                    for (int i = 0; i < batchStarts.Count; i++)
+                    {
+                        var bs = batchStarts[i];
+                        if (bs < w.Start || bs >= w.End) continue;
+                        var be = i + 1 < batchStarts.Count ? batchStarts[i + 1] : nowUtc;
+                        var n = increments.Count(x => x >= bs && x < be);
+                        if (n > 0) { parts += n; usedBatchStarts.Add(bs); }
+                    }
+                }
+                else
+                {
+                    // no cycle var configured: fall back to tally peak between
+                    // the reset pair around this window
+                    var open = resets.FirstOrDefault(r => r >= w.Start - TimeSpan.FromMinutes(40)
+                                                          && r <= w.Start + TimeSpan.FromHours(7));
+                    var close = open == default ? default
+                        : resets.FirstOrDefault(r => r > open);
+                    if (open != default && close != default)
+                        parts = (long)rows.Where(r => r.TsUtc > open && r.TsUtc < close)
+                                          .Select(r => Math.Max(0, r.PartsTally ?? 0)).DefaultIfEmpty(0).Max();
+                }
+
+                // actual machine window: the reset that opened this shift and
+                // the one that closed it (drift-tolerant: resets are ~8h apart
+                // so a wide bracket holds at most one)
+                var openReset = resets.FirstOrDefault(r => r >= w.Start - TimeSpan.FromMinutes(40)
+                                                          && r <= w.Start + TimeSpan.FromHours(7));
+                var closeReset = openReset == default ? default : resets.FirstOrDefault(r => r > openReset);
+                if (closeReset != default && (closeReset - openReset) > TimeSpan.FromHours(12))
+                    closeReset = default;
+
+                string? anchorsJson = usedBatchStarts.Count > 0
+                    ? JsonSerializer.Serialize(usedBatchStarts)
+                    : null;
+
+                db.ShiftHistories.Add(new Data.Entities.ShiftHistory
+                {
+                    MachineId = m.Id,
+                    ShiftNumber = w.Num,
+                    LocalDate = w.Date,
+                    StartUtc = w.Start,
+                    EndUtc = w.End,
+                    OpenResetUtc = openReset == default ? null : openReset,
+                    CloseResetUtc = closeReset == default ? null : closeReset,
+                    PartsAtStart = 0,
+                    PartsAtEnd = parts,
+                    PartsCount = parts,
+                    CapturedUtc = nowUtc,
+                    AnchorsJson = anchorsJson,
+                });
+                await db.SaveChangesAsync(ct);
+                log.LogInformation("shift history captured: {Machine} {Date} shift{N} parts={P}",
+                    m.Id, w.Date, w.Num, parts);
             }
         }
     }
