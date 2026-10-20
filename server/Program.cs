@@ -62,6 +62,8 @@ using (var scope = app.Services.CreateScope())
     await EnsureColumnAsync(sqconn, "Samples", "PartsTally", "REAL NULL");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "PartsTallyVarIndex", "INTEGER NOT NULL DEFAULT 41");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "CycleVarIndex", "INTEGER NOT NULL DEFAULT 0");
+    await EnsureColumnAsync(sqconn, "ShiftHistories", "OpenResetUtc", "TEXT NULL");
+    await EnsureColumnAsync(sqconn, "ShiftHistories", "CloseResetUtc", "TEXT NULL");
 
     // ShiftHistories table: EnsureCreated only builds fresh DBs; create if absent
     await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""ShiftHistories"" (
@@ -75,7 +77,9 @@ using (var scope = app.Services.CreateScope())
         ""PartsAtEnd"" INTEGER NOT NULL,
         ""PartsCount"" INTEGER NOT NULL,
         ""CapturedUtc"" TEXT NOT NULL,
-        ""AnchorsJson"" TEXT NULL
+        ""AnchorsJson"" TEXT NULL,
+        ""OpenResetUtc"" TEXT NULL,
+        ""CloseResetUtc"" TEXT NULL
     )");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "StationsVarIndex", "INTEGER NOT NULL DEFAULT 40");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "PartNameVarIndex", "INTEGER NOT NULL DEFAULT 65");
@@ -153,6 +157,9 @@ app.MapGet("/api/shifthistory/{machineId}", async (string machineId, int? limit,
             shift = h.ShiftNumber,
             startUtc = h.StartUtc,
             endUtc = h.EndUtc,
+            // ACTUAL machine boundaries (tally resets) — null if not observed
+            openResetUtc = h.OpenResetUtc,
+            closeResetUtc = h.CloseResetUtc,
             parts = h.PartsCount,
         })
         .ToListAsync();

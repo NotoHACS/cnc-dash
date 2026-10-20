@@ -42,9 +42,16 @@
                 return;
             }
             tb.innerHTML = rows.map(function (r) {
-                var win = new Date(r.startUtc).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) +
-                    " – " + new Date(r.endUtc).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-                return "<tr><td>" + r.localDate + "</td><td>Shift " + r.shift + "</td><td class=\"muted\">" + win + "</td><td><b>" + r.parts + "</b></td></tr>";
+                // show the ACTUAL machine window (tally reset -> tally reset)
+                // when known, else the nominal configured shift window
+                var s0 = r.openResetUtc ? new Date(r.openResetUtc) : new Date(r.startUtc);
+                var e0 = r.closeResetUtc ? new Date(r.closeResetUtc) : new Date(r.endUtc);
+                var win = s0.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) +
+                    " – " + e0.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                var actual = r.openResetUtc && r.closeResetUtc;
+                return "<tr><td>" + r.localDate + "</td><td>Shift " + r.shift + "</td>" +
+                    "<td class=\"muted\"" + (actual ? " title=\"actual tally-reset window\"" : " title=\"configured shift window (reset not observed)\"") + ">" + win + "</td>" +
+                    "<td><b>" + r.parts + "</b></td></tr>";
             }).join("");
         }).catch(function () {
             document.getElementById("hist-empty").style.display = "";

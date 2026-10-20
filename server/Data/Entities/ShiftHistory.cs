@@ -22,6 +22,13 @@ public class ShiftHistory
     public DateTime StartUtc { get; set; }
     public DateTime EndUtc { get; set; }
 
+    // ACTUAL machine boundary: the tally reset that OPENED this shift and the
+    // one that CLOSED it. The machine resets at ~6:22 / 14:00 / 22:11 and the
+    // timing DRIFTS, so the nominal config window is only an approximation —
+    // the history page must show the real reset-to-reset window.
+    public DateTime? OpenResetUtc { get; set; }
+    public DateTime? CloseResetUtc { get; set; }
+
     // tally value at window start (usually 0 — the app resets) and peak inside
     public long PartsAtStart { get; set; }
     public long PartsAtEnd { get; set; }

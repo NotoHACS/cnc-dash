@@ -127,10 +127,20 @@ public class ShiftHistoryService : BackgroundService
                         }
                     }
 
+                    // The machine's shift boundary IS the tally reset, and the
+                    // reset timing DRIFTS (06:22 → 07:28 within days), so do
+                    // not bracket tightly around the nominal window: resets are
+                    // ~8h apart, so a 130-min bracket holds at most one — the
+                    // reset that OPENED this shift. The next reset after it
+                    // CLOSED the shift. Parts = tally peak between the pair.
                     DateTime? openReset = episodes.FirstOrDefault(ts =>
-                        ts >= win.StartUtc && ts <= win.StartUtc + TimeSpan.FromMinutes(35));
-                    DateTime? closeReset = episodes.FirstOrDefault(ts =>
-                        ts >= win.EndUtc - TimeSpan.FromMinutes(35) && ts <= win.EndUtc + TimeSpan.FromMinutes(5));
+                        ts >= win.StartUtc - TimeSpan.FromMinutes(40) &&
+                        ts <= win.StartUtc + TimeSpan.FromMinutes(90));
+                    DateTime? closeReset = openReset != null
+                        ? episodes.FirstOrDefault(ts => ts > openReset.Value)
+                        : null;
+                    if (closeReset != null && (closeReset.Value - openReset!.Value) > TimeSpan.FromHours(12))
+                        closeReset = null; // machine was idle for days — not a shift pair
 
                     double peak;
                     if (openReset != null && closeReset != null && closeReset > openReset)
@@ -183,6 +193,8 @@ public class ShiftHistoryService : BackgroundService
                         LocalDate = date,
                         StartUtc = win.StartUtc,
                         EndUtc = win.EndUtc,
+                        OpenResetUtc = openReset,
+                        CloseResetUtc = closeReset,
                         PartsAtStart = partsAtStart,
                         PartsAtEnd = partsAtEnd,
                         PartsCount = Math.Max(0, partsAtEnd - partsAtStart),
