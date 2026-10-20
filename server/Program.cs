@@ -157,34 +157,37 @@ app.MapGet("/api/shifthistory/{machineId}", async (string machineId, int? limit,
     var db = scope.ServiceProvider.GetRequiredService<CncDbContext>();
     var m = await db.Machines.AsNoTracking().FirstOrDefaultAsync(x => x.Id == machineId);
     var tz = ShiftEngine.GetTz(m?.Config?.TimeZone ?? "America/New_York");
-    var rows = await db.ShiftHistories.AsNoTracking()
+    var raw = await db.ShiftHistories.AsNoTracking()
         .Where(h => h.MachineId == machineId)
         .OrderByDescending(h => h.StartUtc)
         .Take(limit is > 0 and < 100 ? limit.Value : 14)
-        .Select(h => new
-        {
-            localDate = h.LocalDate.ToString("yyyy-MM-dd"),
-            shift = h.ShiftNumber,
-            startUtc = h.StartUtc,
-            endUtc = h.EndUtc,
-            // ACTUAL machine boundaries (tally resets) — null if not observed
-            openResetUtc = h.OpenResetUtc,
-            closeResetUtc = h.CloseResetUtc,
-            // DISPLAY STRINGS, pre-formatted in the MACHINE's local time by the
-            // server. The browser must NOT do date math on these — a naive
-            // new Date() reinterprets them in the viewer's zone (4h off).
-            startLocal = FmtLocal(h.StartUtc, tz),
-            endLocal = FmtLocal(h.EndUtc, tz),
-            openResetLocal = h.OpenResetUtc == null ? null : FmtLocal(h.OpenResetUtc.Value, tz),
-            closeResetLocal = h.CloseResetUtc == null ? null : FmtLocal(h.CloseResetUtc.Value, tz),
-            // the window we display: first cycle start -> last cycle end
-            firstCycleStartLocal = h.FirstCycleStartUtc == null ? null : FmtLocal(h.FirstCycleStartUtc.Value, tz),
-            lastCycleEndLocal = h.LastCycleEndUtc == null ? null : FmtLocal(h.LastCycleEndUtc.Value, tz),
-            partName = h.PartName,
-            program = h.Program,
-            parts = h.PartsCount,
-        })
         .ToListAsync();
+
+    // format AFTER the query — local functions can't be used inside an EF
+    // expression tree
+    var rows = raw.Select(h => new
+    {
+        localDate = h.LocalDate.ToString("yyyy-MM-dd"),
+        shift = h.ShiftNumber,
+        startUtc = h.StartUtc,
+        endUtc = h.EndUtc,
+        // ACTUAL machine boundaries (tally resets) — null if not observed
+        openResetUtc = h.OpenResetUtc,
+        closeResetUtc = h.CloseResetUtc,
+        // DISPLAY STRINGS, pre-formatted in the MACHINE's local time by the
+        // server. The browser must NOT do date math on these — a naive
+        // new Date() reinterprets them in the viewer's zone (4h off).
+        startLocal = FmtLocal(h.StartUtc, tz),
+        endLocal = FmtLocal(h.EndUtc, tz),
+        openResetLocal = h.OpenResetUtc == null ? null : FmtLocal(h.OpenResetUtc.Value, tz),
+        closeResetLocal = h.CloseResetUtc == null ? null : FmtLocal(h.CloseResetUtc.Value, tz),
+        // the window we display: first cycle start -> last cycle end
+        firstCycleStartLocal = h.FirstCycleStartUtc == null ? null : FmtLocal(h.FirstCycleStartUtc.Value, tz),
+        lastCycleEndLocal = h.LastCycleEndUtc == null ? null : FmtLocal(h.LastCycleEndUtc.Value, tz),
+        partName = h.PartName,
+        program = h.Program,
+        parts = h.PartsCount,
+    }).ToList();
     return rows.Count == 0 ? Results.NotFound() : Results.Ok(rows);
 });
 
