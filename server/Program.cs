@@ -64,6 +64,8 @@ using (var scope = app.Services.CreateScope())
     await EnsureColumnAsync(sqconn, "MachineConfigs", "CycleVarIndex", "INTEGER NOT NULL DEFAULT 0");
     await EnsureColumnAsync(sqconn, "ShiftHistories", "OpenResetUtc", "TEXT NULL");
     await EnsureColumnAsync(sqconn, "ShiftHistories", "CloseResetUtc", "TEXT NULL");
+    await EnsureColumnAsync(sqconn, "ShiftHistories", "PartName", "TEXT NULL");
+    await EnsureColumnAsync(sqconn, "ShiftHistories", "Program", "TEXT NULL");
 
     // ShiftHistories table: EnsureCreated only builds fresh DBs; create if absent
     await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS ""ShiftHistories"" (
@@ -79,7 +81,9 @@ using (var scope = app.Services.CreateScope())
         ""CapturedUtc"" TEXT NOT NULL,
         ""AnchorsJson"" TEXT NULL,
         ""OpenResetUtc"" TEXT NULL,
-        ""CloseResetUtc"" TEXT NULL
+        ""CloseResetUtc"" TEXT NULL,
+        ""PartName"" TEXT NULL,
+        ""Program"" TEXT NULL
     )");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "StationsVarIndex", "INTEGER NOT NULL DEFAULT 40");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "PartNameVarIndex", "INTEGER NOT NULL DEFAULT 65");
@@ -147,6 +151,8 @@ app.MapGet("/api/shifthistory/{machineId}", async (string machineId, int? limit,
 {
     using var scope = scopes.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<CncDbContext>();
+    var m = await db.Machines.AsNoTracking().FirstOrDefaultAsync(x => x.Id == machineId);
+    var tz = ShiftEngine.GetTz(m?.Config?.TimeZone ?? "America/New_York");
     var rows = await db.ShiftHistories.AsNoTracking()
         .Where(h => h.MachineId == machineId)
         .OrderByDescending(h => h.StartUtc)
@@ -160,6 +166,14 @@ app.MapGet("/api/shifthistory/{machineId}", async (string machineId, int? limit,
             // ACTUAL machine boundaries (tally resets) — null if not observed
             openResetUtc = h.OpenResetUtc,
             closeResetUtc = h.CloseResetUtc,
+            // shift window already converted to the MACHINE's local time —
+            // the browser may be in a different zone (UTC vs EDT = 4h off)
+            startLocal = TimeZoneInfo.ConvertTimeFromUtc(h.StartUtc, tz).ToString("o"),
+            endLocal = TimeZoneInfo.ConvertTimeFromUtc(h.EndUtc, tz).ToString("o"),
+            openResetLocal = h.OpenResetUtc == null ? null : TimeZoneInfo.ConvertTimeFromUtc(h.OpenResetUtc.Value, tz).ToString("o"),
+            closeResetLocal = h.CloseResetUtc == null ? null : TimeZoneInfo.ConvertTimeFromUtc(h.CloseResetUtc.Value, tz).ToString("o"),
+            partName = h.PartName,
+            program = h.Program,
             parts = h.PartsCount,
         })
         .ToListAsync();

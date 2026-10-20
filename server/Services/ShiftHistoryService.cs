@@ -196,6 +196,28 @@ public class ShiftHistoryService : BackgroundService
                     ? JsonSerializer.Serialize(usedBatchStarts)
                     : null;
 
+                // part number (VC65) + program during the shift: the LAST
+                // value seen inside the window wins (the job that ran most of
+                // the shift)
+                string? partName = null;
+                if (cfg.PartNameVarIndex > 0)
+                {
+                    var pnPrefix = cfg.PartNameVarIndex.ToString() + "=";
+                    foreach (var r in rows)
+                    {
+                        if (r.TsUtc < w.Start || r.TsUtc > w.End || r.CommonVars is null) continue;
+                        var v = CommonVarValueLong(r.CommonVars, pnPrefix);
+                        if (v.HasValue) partName = v.Value.ToString();
+                    }
+                }
+                partName ??= string.IsNullOrWhiteSpace(cfg.PartName) ? null : cfg.PartName;
+
+                string? program = await db.Samples.AsNoTracking()
+                    .Where(s => s.MachineId == m.Id && s.DataItemId == "Mpprogram" && s.Program != null
+                                && s.TsUtc >= w.Start && s.TsUtc <= w.End)
+                    .OrderBy(s => s.TsUtc).Select(s => s.Program)
+                    .LastOrDefaultAsync(ct);
+
                 db.ShiftHistories.Add(new Data.Entities.ShiftHistory
                 {
                     MachineId = m.Id,
@@ -208,6 +230,8 @@ public class ShiftHistoryService : BackgroundService
                     PartsAtStart = 0,
                     PartsAtEnd = parts,
                     PartsCount = parts,
+                    PartName = partName,
+                    Program = program,
                     CapturedUtc = nowUtc,
                     AnchorsJson = anchorsJson,
                 });

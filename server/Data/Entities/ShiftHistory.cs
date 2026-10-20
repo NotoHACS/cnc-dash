@@ -33,6 +33,13 @@ public class ShiftHistory
     public long PartsAtStart { get; set; }
     public long PartsAtEnd { get; set; }
 
+    // part number / job name running during the shift (VC65, e.g. "5600";
+    // falls back to the machine's configured part name)
+    public string? PartName { get; set; }
+
+    // program running during the shift (e.g. OMV-5600.MIN)
+    public string? Program { get; set; }
+
     // PartsAtEnd - PartsAtStart — the number that matters
     public long PartsCount { get; set; }
 

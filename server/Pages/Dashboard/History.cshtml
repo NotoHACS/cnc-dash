@@ -18,21 +18,32 @@
     </div>
 
     <div class="card wide">
-        <div class="label">Final part counts per shift (captured at tally reset)</div>
+        <div class="label">Final part counts per shift (parts credited to the shift the batch started)</div>
         <div class="tools-scroll">
             <table class="tools" id="hist">
                 <thead>
-                    <tr><th>Date</th><th>Shift</th><th>Window</th><th>Parts</th></tr>
+                    <tr><th>Date</th><th>Shift</th><th>Window</th><th>Part</th><th>Program</th><th>Parts</th></tr>
                 </thead>
                 <tbody></tbody>
             </table>
         </div>
-        <div class="sub" id="hist-empty" style="display:none">No captured shifts yet — rows appear after each shift's tally reset (≈6:20am, 2:20pm, 10:20pm).</div>
+        <div class="sub" id="hist-empty" style="display:none">No captured shifts yet — rows appear after each shift ends (plus a short grace so a batch that finishes late is still counted).</div>
     </div>
 </div>
 
 <script>
 (function () {
+    // times come pre-converted to the MACHINE's local time by the API
+    // (startLocal/endLocal) — never re-localize them in the browser, or a
+    // UTC-locale viewer sees the shift 4-5 hours off.
+    function fmt(iso, withDay) {
+        if (!iso) return "—";
+        var d = new Date(iso);
+        var t = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+        if (!withDay) return t;
+        var day = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+        return day + " " + t;
+    }
     fetch("/api/shifthistory/@Model.MachineId?limit=60", { cache: "no-store" })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (rows) {
@@ -42,15 +53,14 @@
                 return;
             }
             tb.innerHTML = rows.map(function (r) {
-                // show the ACTUAL machine window (tally reset -> tally reset)
-                // when known, else the nominal configured shift window
-                var s0 = r.openResetUtc ? new Date(r.openResetUtc) : new Date(r.startUtc);
-                var e0 = r.closeResetUtc ? new Date(r.closeResetUtc) : new Date(r.endUtc);
-                var win = s0.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) +
-                    " – " + e0.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-                var actual = r.openResetUtc && r.closeResetUtc;
+                var s0 = r.openResetLocal || r.startLocal;
+                var e0 = r.closeResetLocal || r.endLocal;
+                var win = fmt(s0, true) + " – " + fmt(e0, false);
+                var actual = r.openResetLocal && r.closeResetLocal;
                 return "<tr><td>" + r.localDate + "</td><td>Shift " + r.shift + "</td>" +
                     "<td class=\"muted\"" + (actual ? " title=\"actual tally-reset window\"" : " title=\"configured shift window (reset not observed)\"") + ">" + win + "</td>" +
+                    "<td>" + (r.partName || "—") + "</td>" +
+                    "<td class=\"muted\">" + (r.program || "—") + "</td>" +
                     "<td><b>" + r.parts + "</b></td></tr>";
             }).join("");
         }).catch(function () {
