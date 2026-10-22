@@ -455,6 +455,8 @@ public class SampleRow
     public int? tool { get; set; }
     public double? runtime { get; set; }
     public double? totalRuntime { get; set; }
+    // set when the payload could not be parsed (kept raw, never dropped)
+    public bool unparsed { get; set; }
     public double? totalCuttingTime { get; set; }
     public double? feedCmd { get; set; }
     public double? xAct { get; set; }
@@ -553,13 +555,27 @@ public class SampleRow
             case ItemCategory.Block:
                 row.block = e.Value; break;
             case ItemCategory.CommonVars:
-                var cv = ParseCommonVars(e.Value); if (cv == null) return null;
+                // A payload we cannot parse must NOT vanish: an agent that
+                // formats common vars differently would lose the whole
+                // category with no trace. Keep the raw payload (the server
+                // finds no vars in it, but the item stays visible) and report
+                // it as unmapped so the coverage view shows the gap.
+                var cv = ParseCommonVars(e.Value);
+                if (cv is null)
+                {
+                    row.commonVars = TruncRaw(e.Value);
+                    row.unparsed = true;
+                    break;
+                }
                 row.commonVars = cv.Value.map; row.stationsOn = cv.Value.stations; row.partsTally = cv.Value.tally; break;
             default:
                 return null;
         }
         return row;
     }
+
+    // raw payload cap for an unparsed value (the parsed map is capped at 4000)
+    private static string TruncRaw(string v) => v.Length <= 4000 ? v : v[..4000];
 
     /// <summary>Value used for change detection (payload only, ts/seq excluded).</summary>
     public string ValueCanonical()
@@ -580,7 +596,7 @@ public class SampleRow
         if (zAct.HasValue) return $"z:{zAct.Value:0.#}";
         if (line.HasValue) return $"line:{line.Value}";
         if (block != null) return $"block:{block}";
-        if (commonVars != null) return $"cvars:{commonVars}";
+        if (commonVars != null) return $"cvars:{commonVars}{(unparsed ? ":raw" : "")}";
         return "";
     }
 
@@ -603,6 +619,7 @@ public class SampleRow
         foreach (var tok in raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var ci = tok.IndexOf(':');
+            if (ci <= 0) ci = tok.IndexOf('=');
             if (ci <= 0) continue;
             if (!int.TryParse(tok[..ci], NumberStyles.Integer, CultureInfo.InvariantCulture, out var idx)) continue;
             var rawVal = tok[(ci + 1)..];
