@@ -122,8 +122,13 @@ public class MtConnectClient
 
             if (!result.SeenItemIds.Contains(di)) result.SeenItemIds.Add(di);
 
+            // an asset trigger is either an explicit asset change/removal event
+            // or the agent's "current tool asset" pointer (Mp1ToolAssetId),
+            // which changes when the tool changes
             var isAssetTrigger = cfg.AssetTriggerItems.Any(t =>
-                di.Contains(t, StringComparison.OrdinalIgnoreCase));
+                di.Contains(t, StringComparison.OrdinalIgnoreCase)) ||
+                di.EndsWith("ToolAssetId", StringComparison.OrdinalIgnoreCase) ||
+                di.EndsWith("ToolAsset", StringComparison.OrdinalIgnoreCase);
             if (isAssetTrigger)
             {
                 // the agent re-emits the CURRENT tool's assetId every poll;

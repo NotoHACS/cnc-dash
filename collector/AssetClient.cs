@@ -32,16 +32,52 @@ public class AssetClient
     /// <summary>Fetch CuttingTool assets → list of tool rows for ingest. Null on failure.</summary>
     public async Task<List<ToolRow>?> FetchAsync()
     {
+        // The standard MTConnect asset endpoint is /assets (plural). Okuma's
+        // 1.4 adapter adds /asset (singular); 1.3-era agents expose only the
+        // plural form, and some serve it device-scoped. Try every known form
+        // and keep the first that yields tools - hardcoding one URL is how a
+        // machine ends up reporting "0 tools" with no error anywhere.
+        var tried = new List<string>();
+        foreach (var uri in AssetUrls())
+        {
+            tried.Add(uri);
+            var rows = await FetchFromAsync(uri);
+            if (rows is { Count: > 0 })
+            {
+                if (tried.Count > 1)
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] assets served at {uri}");
+                return rows;
+            }
+        }
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] no tool assets found at: {string.Join(", ", tried)}");
+        return null;
+    }
+
+    // every asset endpoint shape a MTConnect/Okuma agent may serve
+    private IEnumerable<string> AssetUrls()
+    {
+        var baseUrl = cfg.AgentUrl.TrimEnd('/');
+        var device = (cfg.DevicePath ?? "").Trim('/');
+        yield return $"{baseUrl}/asset?type=CuttingTool";
+        yield return $"{baseUrl}/assets?type=CuttingTool";
+        if (device.Length > 0)
+        {
+            yield return $"{baseUrl}/{device}/asset?type=CuttingTool";
+            yield return $"{baseUrl}/{device}/assets?type=CuttingTool";
+        }
+    }
+
+    private async Task<List<ToolRow>?> FetchFromAsync(string uri)
+    {
         XDocument doc;
         try
         {
-            var uri = $"{cfg.AgentUrl.TrimEnd('/')}/asset?type=CuttingTool";
             var xml = await http.GetStringAsync(uri);
             doc = XDocument.Parse(xml);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] asset fetch failed: {ex.Message}");
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] asset fetch failed ({uri}): {ex.Message}");
             return null;
         }
 
@@ -61,21 +97,38 @@ public class AssetClient
     /// </summary>
     public async Task<ToolRow?> FetchOneAsync(string assetId)
     {
-        XDocument doc;
-        try
+        var baseUrl = cfg.AgentUrl.TrimEnd('/');
+        var device = (cfg.DevicePath ?? "").Trim('/');
+        var esc = Uri.EscapeDataString(assetId);
+        var urls = new List<string>
         {
-            var uri = $"{cfg.AgentUrl.TrimEnd('/')}/asset/{Uri.EscapeDataString(assetId)}";
-            var xml = await http.GetStringAsync(uri);
-            doc = XDocument.Parse(xml);
-        }
-        catch (Exception ex)
+            $"{baseUrl}/asset/{esc}",
+            $"{baseUrl}/assets/{esc}",
+        };
+        if (device.Length > 0)
         {
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] asset fetch ({assetId}) failed: {ex.Message}");
-            return null;
+            urls.Add($"{baseUrl}/{device}/asset/{esc}");
+            urls.Add($"{baseUrl}/{device}/assets/{esc}");
         }
 
-        var asset = CuttingTools(doc).FirstOrDefault();
-        return asset == null ? null : ParseCuttingTool(asset);
+        foreach (var uri in urls)
+        {
+            XDocument doc;
+            try
+            {
+                var xml = await http.GetStringAsync(uri);
+                doc = XDocument.Parse(xml);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] asset fetch ({assetId}) failed at {uri}: {ex.Message}");
+                continue;
+            }
+
+            var asset = CuttingTools(doc).FirstOrDefault();
+            if (asset != null) return ParseCuttingTool(asset);
+        }
+        return null;
     }
 
     private static ToolRow? ParseCuttingTool(XElement asset)
