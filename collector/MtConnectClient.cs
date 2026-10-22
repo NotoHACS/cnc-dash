@@ -120,6 +120,8 @@ public class MtConnectClient
             var ts = tsAttr != null ? DateTime.Parse(tsAttr).ToUniversalTime() : DateTime.UtcNow;
             diag?.Observe(di, e.Value, tsAttr ?? "", e.Attribute("sequence")?.Value ?? "");
 
+            if (!result.SeenItemIds.Contains(di)) result.SeenItemIds.Add(di);
+
             var isAssetTrigger = cfg.AssetTriggerItems.Any(t =>
                 di.Contains(t, StringComparison.OrdinalIgnoreCase));
             if (isAssetTrigger)
@@ -133,7 +135,13 @@ public class MtConnectClient
             }
 
             var sample = SampleRow.From(di, ts, 0, e);
-            if (sample is null) continue;
+            if (sample is null)
+            {
+                // the agent publishes it but we cannot map it to a column —
+                // report it so the gap is visible instead of silent
+                if (!result.UnmappedItemIds.Contains(di)) result.UnmappedItemIds.Add(di);
+                continue;
+            }
 
             // sequence: agent-provided when present; treat it as-is. /current
             // semantics: an item's sequence marks WHEN THAT VALUE WAS SET and
@@ -289,6 +297,8 @@ public class MtConnectClient
             var seqStr = e.Attribute("sequence")?.Value;
             diag?.Observe(di, e.Value, tsAttr ?? "", seqStr ?? "");
 
+            if (!result.SeenItemIds.Contains(di)) result.SeenItemIds.Add(di);
+
             if (seqStr == null || !long.TryParse(seqStr, out var agentSeq))
             {
                 if (!seqWarned)
@@ -309,7 +319,11 @@ public class MtConnectClient
             }
 
             var sample = SampleRow.From(di, ts, agentSeq, e);
-            if (sample is null) continue;
+            if (sample is null)
+            {
+                if (!result.UnmappedItemIds.Contains(di)) result.UnmappedItemIds.Add(di);
+                continue;
+            }
 
             // safety net: /sample only returns changed events by spec; the
             // canonical gate also dedupes cursor replays (from is inclusive)
@@ -371,7 +385,7 @@ public class MtConnectClient
     // first common-variable post visibility (subsequent change posts are silent)
     private void LogFirstCvPost(SampleRow sample, string di)
     {
-        if (!di.Equals("Mp1CommonVariable", StringComparison.OrdinalIgnoreCase) || cvLoggedOnce) return;
+        if (!di.EndsWith("CommonVariable", StringComparison.OrdinalIgnoreCase) || cvLoggedOnce) return;
         cvLoggedOnce = true;
         Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [debug] common variables posted: stations={sample.stationsOn} tally={sample.partsTally} ({sample.commonVars?.Length ?? 0} chars)");
     }
@@ -398,6 +412,13 @@ public class PollResult
     public List<SampleRow> Samples { get; set; } = new();
     public bool AssetChangedTrigger { get; set; }
 
+    // Every data item id the agent published this poll, and the ones the
+    // collector could not map to a column. Uploaded with the batch so the
+    // dashboard can show the agent's REAL item set instead of a silently
+    // truncated one (an unmapped item looks exactly like an absent one).
+    public List<string> SeenItemIds { get; set; } = new();
+    public List<string> UnmappedItemIds { get; set; } = new();
+
     // assetId from the asset-change trigger (e.g. asset_chg) for targeted fetch
     public string? ChangedAssetId { get; set; }
 }
@@ -415,6 +436,7 @@ public class SampleRow
     public string? prog { get; set; }
     public int? tool { get; set; }
     public double? runtime { get; set; }
+    public double? totalRuntime { get; set; }
     public double? totalCuttingTime { get; set; }
     public double? feedCmd { get; set; }
     public double? xAct { get; set; }
@@ -426,35 +448,98 @@ public class SampleRow
     public int? stationsOn { get; set; }
     public double? partsTally { get; set; }
 
+    /// <summary>
+    /// Which semantic category a data item belongs to, or None when the agent
+    /// publishes an item we do not model. Split out from From() so the collector
+    /// can REPORT the agent's real item set (and which items are unmapped)
+    /// instead of silently discarding them — a dropped item is invisible in
+    /// every dashboard metric, which is how a machine ends up "missing" a
+    /// feature that the agent actually publishes.
+    /// </summary>
+    public enum ItemCategory
+    {
+        None, Speed, Count, Prog, Tool, Exec, Mode, Fmode, Runtime,
+        TotalRuntime, TotalCuttingTime, Feed, X, Y, Z, Line, Block, CommonVars,
+    }
+
+    // dataItemId prefixes vary per agent build: newer Okuma agents use
+    // Mp1*/MS1*/MX1* prefixes, older 1.3-style agents (CNC13's) prefix with
+    // the machine code ("C13S1speed", "C13X1actm", ...). Match by SUFFIX so
+    // both shapes map onto the same columns; the raw di stays per-row.
+    // NOTE: value types differ per item (double vs long vs text) and the
+    // semantic of e.g. "*S1speed" is stable across agents.
+    private static bool Has(string di, string suffix) =>
+        di.EndsWith(suffix, StringComparison.OrdinalIgnoreCase);
+
+    public static ItemCategory CategoryOf(string di)
+    {
+        if (Has(di, "S1speed") || Has(di, "SpindleSpeed")) return ItemCategory.Speed;
+        if (Has(di, "partcount")) return ItemCategory.Count;
+        if (Has(di, "program")) return ItemCategory.Prog;
+        if (Has(di, "CurrentTool")) return ItemCategory.Tool;
+        if (Has(di, "execution")) return ItemCategory.Exec;
+        if (Has(di, "controllermode")) return ItemCategory.Mode;
+        if (Has(di, "pmode")) return ItemCategory.Mode;
+        if (Has(di, "fmode")) return ItemCategory.Fmode;
+        // TotalSpindleRunTime must be tested BEFORE SpindleRunTime (it ends
+        // with it) so the cumulative series is not folded into the per-run one
+        if (Has(di, "TotalSpindleRunTime")) return ItemCategory.TotalRuntime;
+        if (Has(di, "SpindleRunTime")) return ItemCategory.Runtime;
+        if (Has(di, "TotalCuttingTime")) return ItemCategory.TotalCuttingTime;
+        if (Has(di, "Fcmd")) return ItemCategory.Feed;
+        if (Has(di, "X1actm")) return ItemCategory.X;
+        if (Has(di, "Y1actm")) return ItemCategory.Y;
+        if (Has(di, "Z1actm")) return ItemCategory.Z;
+        if (Has(di, "1line") || Has(di, "LineId")) return ItemCategory.Line;
+        if (Has(di, "block")) return ItemCategory.Block;
+        if (Has(di, "CommonVariable")) return ItemCategory.CommonVars;
+        return ItemCategory.None;
+    }
+
     public static SampleRow? From(string di, DateTime ts, long seq, XElement e)
     {
         var row = new SampleRow { ts = ts, di = di, seq = seq };
 
-        // dataItemId prefixes vary per agent build: newer Okuma agents use
-        // Mp1*/MS1*/MX1* prefixes, older 1.3-style agents (CNC13's) prefix with
-        // the machine code ("C13S1speed", "C13X1actm", ...). Match by SUFFIX so
-        // both shapes map onto the same columns; the raw di stays per-row.
-        // NOTE: value types differ per item (double vs long vs text) and the
-        // semantic of e.g. "*S1speed" is stable across agents.
-        bool Has(string suffix) => di.EndsWith(suffix, StringComparison.OrdinalIgnoreCase);
-        if (Has("S1speed") || Has("SpindleSpeed")) { if (!double.TryParse(e.Value, out var s)) return null; row.speed = s; }
-        else if (Has("partcount")) { if (!long.TryParse(e.Value, out var c)) return null; row.count = c; }
-        else if (Has("program")) { row.prog = e.Value; }
-        else if (Has("CurrentTool")) { if (!int.TryParse(e.Value, out var t)) return null; row.tool = t; }
-        else if (Has("execution")) { row.exec = e.Value; }
-        else if (Has("controllermode")) { row.mode = e.Value; }
-        else if (di.Equals("Mpmode", StringComparison.OrdinalIgnoreCase)) { row.mode = e.Value; }
-        else if (Has("fmode") || di.Equals("Mfmode", StringComparison.OrdinalIgnoreCase)) { row.fmode = e.Value; }
-        else if (Has("SpindleRunTime")) { if (!double.TryParse(e.Value, out var r)) return null; row.runtime = r; }
-        else if (Has("TotalCuttingTime")) { if (!double.TryParse(e.Value, out var tc)) return null; row.totalCuttingTime = tc; }
-        else if (di.Equals("Mp1Fcmd", StringComparison.OrdinalIgnoreCase)) { if (!double.TryParse(e.Value, out var f)) return null; row.feedCmd = f; }
-        else if (Has("X1actm")) { if (!double.TryParse(e.Value, out var x)) return null; row.xAct = x; }
-        else if (Has("Y1actm")) { if (!double.TryParse(e.Value, out var y)) return null; row.yAct = y; }
-        else if (Has("Z1actm")) { if (!double.TryParse(e.Value, out var z)) return null; row.zAct = z; }
-        else if (Has("Mp1line") || Has("LineId")) { if (!long.TryParse(e.Value, out var ln)) return null; row.line = ln; }
-        else if (Has("block")) { row.block = e.Value; }
-        else if (Has("CommonVariable")) { var cv = ParseCommonVars(e.Value); if (cv == null) return null; row.commonVars = cv.Value.map; row.stationsOn = cv.Value.stations; row.partsTally = cv.Value.tally; }
-        else return null;
+        switch (CategoryOf(di))
+        {
+            case ItemCategory.Speed:
+                if (!double.TryParse(e.Value, out var s)) return null; row.speed = s; break;
+            case ItemCategory.Count:
+                if (!long.TryParse(e.Value, out var c)) return null; row.count = c; break;
+            case ItemCategory.Prog:
+                row.prog = e.Value; break;
+            case ItemCategory.Tool:
+                if (!int.TryParse(e.Value, out var t)) return null; row.tool = t; break;
+            case ItemCategory.Exec:
+                row.exec = e.Value; break;
+            case ItemCategory.Mode:
+                row.mode = e.Value; break;
+            case ItemCategory.Fmode:
+                row.fmode = e.Value; break;
+            case ItemCategory.Runtime:
+                if (!double.TryParse(e.Value, out var r)) return null; row.runtime = r; break;
+            case ItemCategory.TotalRuntime:
+                if (!double.TryParse(e.Value, out var tr)) return null; row.totalRuntime = tr; break;
+            case ItemCategory.TotalCuttingTime:
+                if (!double.TryParse(e.Value, out var tc)) return null; row.totalCuttingTime = tc; break;
+            case ItemCategory.Feed:
+                if (!double.TryParse(e.Value, out var f)) return null; row.feedCmd = f; break;
+            case ItemCategory.X:
+                if (!double.TryParse(e.Value, out var x)) return null; row.xAct = x; break;
+            case ItemCategory.Y:
+                if (!double.TryParse(e.Value, out var y)) return null; row.yAct = y; break;
+            case ItemCategory.Z:
+                if (!double.TryParse(e.Value, out var z)) return null; row.zAct = z; break;
+            case ItemCategory.Line:
+                if (!long.TryParse(e.Value, out var ln)) return null; row.line = ln; break;
+            case ItemCategory.Block:
+                row.block = e.Value; break;
+            case ItemCategory.CommonVars:
+                var cv = ParseCommonVars(e.Value); if (cv == null) return null;
+                row.commonVars = cv.Value.map; row.stationsOn = cv.Value.stations; row.partsTally = cv.Value.tally; break;
+            default:
+                return null;
+        }
         return row;
     }
 
@@ -469,6 +554,7 @@ public class SampleRow
         if (prog != null) return $"prog:{prog}";
         if (tool.HasValue) return $"tool:{tool.Value}";
         if (runtime.HasValue) return $"runtime:{runtime.Value:0.#}";
+        if (totalRuntime.HasValue) return $"truntime:{totalRuntime.Value:0.#}";
         if (totalCuttingTime.HasValue) return $"tcut:{totalCuttingTime.Value:0.#}";
         if (feedCmd.HasValue) return $"feed:{feedCmd.Value:0.#}";
         if (xAct.HasValue) return $"x:{xAct.Value:0.#}";

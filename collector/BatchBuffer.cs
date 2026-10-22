@@ -7,6 +7,13 @@ public class Batch
     public List<SampleRow> samples { get; set; } = new();
     public List<ToolRow> tools { get; set; } = new();
     public string? collectorVersion { get; set; }
+
+    // every dataItemId the agent published this poll, and the ones the
+    // collector could not map to a column. The server stores them per machine
+    // so "this machine has no common vars" can be told apart from "the agent
+    // publishes them under a name we do not map".
+    public List<string> seenItems { get; set; } = new();
+    public List<string> unmappedItems { get; set; } = new();
 }
 
 /// <summary>

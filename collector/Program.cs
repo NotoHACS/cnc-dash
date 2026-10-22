@@ -68,6 +68,8 @@ public static class Program
                             samples = poll.Samples,
                             tools = new List<ToolRow>(),
                             collectorVersion = displayVersion,
+                            seenItems = poll.SeenItemIds,
+                            unmappedItems = poll.UnmappedItemIds,
                         });
 
                         if (poll.AssetChangedTrigger)

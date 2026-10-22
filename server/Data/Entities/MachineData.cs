@@ -52,6 +52,16 @@ public class Sample
     public long? Line { get; set; }
     public string? Block { get; set; }
 
+    // Mp1SpindleRunTime [AccumulatedTime] seconds — cumulative spindle run
+    // time. Carried through ingest (the collector parses it) so the dashboard
+    // can show real spindle runtime instead of only a speed-derived estimate.
+    public double? Runtime { get; set; }
+
+    // Mp1TotalSpindleRunTime [AccumulatedTime] seconds — cumulative spindle run
+    // time (kept apart from Runtime: an agent that publishes both would
+    // otherwise alternate the two series in one column).
+    public double? TotalRuntime { get; set; }
+
     // Mp1CommonVariable [subType COMMON]: the full Okuma common-variable map as a
     // compact "N=v;N=v" string (4000-char cap); StationsOn = VC40, PartsTally =
     // VC41 (cumulative parts tally — primary parts source; resets on job change).
@@ -89,4 +99,20 @@ public class ToolAsset
     public string? Status { get; set; } // AVAILABLE | BROKEN | USED | NEW | EXPIRED
 
     public DateTime UpdatedAtUtc { get; set; }
+}
+// One row per data item id the agent published for a machine. Records what the
+// AGENT actually exposes, so a missing dashboard feature can be attributed to
+// the agent (item never published) vs the collector (published but unmapped).
+public class AgentItem
+{
+    public long Id { get; set; }
+
+    public string MachineId { get; set; } = default!;
+
+    public string DataItemId { get; set; } = default!;
+
+    // true = the collector maps this id to a column; false = published but unmapped
+    public bool Mapped { get; set; }
+
+    public DateTime LastSeenUtc { get; set; }
 }

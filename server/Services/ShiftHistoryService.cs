@@ -78,7 +78,7 @@ public class ShiftHistoryService : BackgroundService
             // one query for the last 3 days of common-var rows (tally + vars)
             var from = nowUtc.AddDays(-3);
             var rows = await db.Samples.AsNoTracking()
-                .Where(s => s.MachineId == m.Id && s.DataItemId == "Mp1CommonVariable" && s.TsUtc >= from)
+                .Where(s => s.MachineId == m.Id && s.CommonVars != null && s.TsUtc >= from)
                 .OrderBy(s => s.TsUtc).ToListAsync(ct);
             if (rows.Count == 0) continue;
 
@@ -223,7 +223,7 @@ public class ShiftHistoryService : BackgroundService
                 partName ??= string.IsNullOrWhiteSpace(cfg.PartName) ? null : cfg.PartName;
 
                 string? program = await db.Samples.AsNoTracking()
-                    .Where(s => s.MachineId == m.Id && s.DataItemId == "Mpprogram" && s.Program != null
+                    .Where(s => s.MachineId == m.Id && s.Program != null
                                 && s.TsUtc >= w.Start && s.TsUtc <= w.End)
                     .OrderBy(s => s.TsUtc).Select(s => s.Program)
                     .LastOrDefaultAsync(ct);

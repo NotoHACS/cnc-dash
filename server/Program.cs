@@ -51,6 +51,25 @@ using (var scope = app.Services.CreateScope())
     await EnsureColumnAsync(sqconn, "MachineConfigs", "ProbeToolNumber", "INTEGER NOT NULL DEFAULT 1");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "PartsThisShiftOverride", "INTEGER NULL");
     await EnsureColumnAsync(sqconn, "Samples", "TotalCuttingTime", "REAL NULL");
+    await EnsureColumnAsync(sqconn, "Samples", "Runtime", "REAL NULL");
+    await EnsureColumnAsync(sqconn, "Samples", "TotalRuntime", "REAL NULL");
+    // new table (EnsureCreated never alters an existing database)
+    using (var create = sqconn.CreateCommand())
+    {
+        create.CommandText = @"CREATE TABLE IF NOT EXISTS ""AgentItems"" (
+            ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_AgentItems"" PRIMARY KEY AUTOINCREMENT,
+            ""MachineId"" TEXT NOT NULL,
+            ""DataItemId"" TEXT NOT NULL,
+            ""Mapped"" INTEGER NOT NULL,
+            ""LastSeenUtc"" TEXT NOT NULL
+        );";
+        await create.ExecuteNonQueryAsync();
+    }
+    using (var idx = sqconn.CreateCommand())
+    {
+        idx.CommandText = @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_AgentItems_MachineId_DataItemId"" ON ""AgentItems"" (""MachineId"", ""DataItemId"");";
+        await idx.ExecuteNonQueryAsync();
+    }
     await EnsureColumnAsync(sqconn, "Samples", "FeedCmd", "REAL NULL");
     await EnsureColumnAsync(sqconn, "Samples", "XAct", "REAL NULL");
     await EnsureColumnAsync(sqconn, "Samples", "YAct", "REAL NULL");

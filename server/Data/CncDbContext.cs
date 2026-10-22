@@ -12,6 +12,7 @@ public class CncDbContext : DbContext
     public DbSet<Sample> Samples => Set<Sample>();
     public DbSet<ToolAsset> ToolAssets => Set<ToolAsset>();
     public DbSet<ShiftHistory> ShiftHistories => Set<ShiftHistory>();
+    public DbSet<AgentItem> AgentItems => Set<AgentItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -24,6 +25,11 @@ public class CncDbContext : DbContext
         modelBuilder.Entity<ToolAsset>(e =>
         {
             e.HasIndex(t => new { t.MachineId, t.AssetId }).IsUnique();
+        });
+
+        modelBuilder.Entity<AgentItem>(e =>
+        {
+            e.HasIndex(a => new { a.MachineId, a.DataItemId }).IsUnique();
         });
 
         modelBuilder.Entity<MachineConfig>().HasKey(c => c.MachineId);

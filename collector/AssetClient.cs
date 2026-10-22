@@ -5,8 +5,19 @@ namespace CncDash.Collector;
 
 public class AssetClient
 {
-    private static readonly XNamespace Ns = "urn:mtconnect.org:MTConnectAssets:1.4";
-    private static readonly XNamespace Okuma = "urn:okuma.com:OkumaToolAssets:1.4";
+    // Asset XML namespaces differ per agent build: 1.4 agents serve
+    // urn:mtconnect.org:MTConnectAssets:1.4, older 1.3 agents serve 1.3, and
+    // Okuma's tool-asset extensions live in urn:okuma.com:OkumaToolAssets:*.
+    // A hardcoded namespace makes every lookup miss silently (0 tools) on a
+    // differently-versioned agent, so match by LOCAL element/attribute name.
+    private static XElement? Child(XElement? parent, string localName) =>
+        parent?.Elements().FirstOrDefault(e => e.Name.LocalName == localName);
+
+    private static string? Attr(XElement? el, string localName) =>
+        el?.Attributes().FirstOrDefault(a => a.Name.LocalName == localName)?.Value;
+
+    private static IEnumerable<XElement> CuttingTools(XDocument doc) =>
+        doc.Descendants().Where(e => e.Name.LocalName == "CuttingTool");
 
     private readonly HttpClient http;
     private readonly CollectorConfig cfg;
@@ -35,7 +46,7 @@ public class AssetClient
         }
 
         var tools = new List<ToolRow>();
-        foreach (var asset in doc.Descendants(Ns + "CuttingTool"))
+        foreach (var asset in CuttingTools(doc))
         {
             var row = ParseCuttingTool(asset);
             if (row != null) tools.Add(row);
@@ -63,39 +74,40 @@ public class AssetClient
             return null;
         }
 
-        var asset = doc.Descendants(Ns + "CuttingTool").FirstOrDefault();
+        var asset = CuttingTools(doc).FirstOrDefault();
         return asset == null ? null : ParseCuttingTool(asset);
     }
 
     private static ToolRow? ParseCuttingTool(XElement asset)
     {
-        var assetId = asset.Attribute("assetId")?.Value;
+        var assetId = Attr(asset, "assetId");
         if (string.IsNullOrEmpty(assetId)) return null;
 
-        int.TryParse(asset.Attribute("serialNumber")?.Value, out var serial);
+        int.TryParse(Attr(asset, "serialNumber"), out var serial);
 
-        var lc = asset.Element(Ns + "CuttingToolLifeCycle");
+        var lc = Child(asset, "CuttingToolLifeCycle");
         int? toolNumber = null, group = null, pot = null;
         double? initial = null, value = null;
         string? lifeType = null, dir = null, status = null;
 
         if (lc != null)
         {
-            status = lc.Element(Ns + "CutterStatus")?.Element(Ns + "Status")?.Value;
-            var tn = lc.Element(Ns + "ProgramToolNumber");
+            status = Child(Child(lc, "CutterStatus"), "Status")?.Value;
+            var tn = Child(lc, "ProgramToolNumber");
             if (tn != null && int.TryParse(tn.Value, out var tnVal)) toolNumber = tnVal;
-            var tg = lc.Element(Ns + "ProgramToolGroup");
+            var tg = Child(lc, "ProgramToolGroup");
             if (tg != null && int.TryParse(tg.Value, out var tgVal)) group = tgVal;
-            var loc = lc.Element(Ns + "Location");
+            var loc = Child(lc, "Location");
             if (loc != null && int.TryParse(loc.Value, out var potVal)) pot = potVal;
 
-            var life = lc.Element(Ns + "ToolLife");
+            var life = Child(lc, "ToolLife");
             if (life != null)
             {
-                // Okuma extension elements/attributes live in x: ns; attributes are unprefixed here
-                lifeType = life.Attribute("type")?.Value;
-                dir = life.Attribute("countDirection")?.Value;
-                if (double.TryParse(life.Attribute("initial")?.Value, out var initVal)) initial = initVal;
+                // Okuma extension attributes (type/countDirection/initial) may be
+                // prefixed (x:type) on some agent builds — match by local name
+                lifeType = Attr(life, "type");
+                dir = Attr(life, "countDirection");
+                if (double.TryParse(Attr(life, "initial"), out var initVal)) initial = initVal;
                 if (double.TryParse(life.Value, out var valVal)) value = valVal;
             }
         }

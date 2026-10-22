@@ -15,6 +15,14 @@ public class IngestBatch
 
     [JsonPropertyName("collectorVersion")]
     public string? CollectorVersion { get; set; }
+
+    // the agent's real data-item inventory (ids it published this poll) and
+    // the ones the collector could not map to a column
+    [JsonPropertyName("seenItems")]
+    public List<string> SeenItems { get; set; } = new();
+
+    [JsonPropertyName("unmappedItems")]
+    public List<string> UnmappedItems { get; set; } = new();
 }
 
 public class IngestSample
@@ -51,6 +59,12 @@ public class IngestSample
 
     [JsonPropertyName("totalCuttingTime")]
     public double? TotalCuttingTime { get; set; }
+
+    [JsonPropertyName("runtime")]
+    public double? Runtime { get; set; }
+
+    [JsonPropertyName("totalRuntime")]
+    public double? TotalRuntime { get; set; }
 
     [JsonPropertyName("feedCmd")]
     public double? FeedCmd { get; set; }
@@ -205,6 +219,8 @@ public static class IngestEndpoints
                     Program = s.Program,
                     CurrentTool = s.CurrentTool,
                     TotalCuttingTime = s.TotalCuttingTime,
+                    Runtime = s.Runtime,
+                    TotalRuntime = s.TotalRuntime,
                     FeedCmd = s.FeedCmd,
                     XAct = s.XAct,
                     YAct = s.YAct,
@@ -254,6 +270,48 @@ public static class IngestEndpoints
                     existing.UpdatedAtUtc = t.UpdatedAtUtc;
                 }
                 result.ToolsUpdated++;
+            }
+
+            // ---- the agent's data-item inventory -------------------------------
+            // Record every id the agent published and whether the collector
+            // could map it. This is what makes "this machine shows no common
+            // vars" diagnosable: the id is absent from the agent, or present
+            // but unmapped by the collector.
+            if (batch.SeenItems.Count > 0)
+            {
+                var unmapped = new HashSet<string>(batch.UnmappedItems, StringComparer.OrdinalIgnoreCase);
+                var seen = new HashSet<string>(batch.SeenItems, StringComparer.OrdinalIgnoreCase);
+                var known = await db.AgentItems
+                    .Where(a => a.MachineId == machineId && seen.Contains(a.DataItemId))
+                    .ToListAsync();
+                var knownIds = known.Select(a => a.DataItemId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var di in seen)
+                {
+                    var mapped = !unmapped.Contains(di);
+                    var row = known.FirstOrDefault(a => string.Equals(a.DataItemId, di, StringComparison.OrdinalIgnoreCase));
+                    if (row is null)
+                    {
+                        db.AgentItems.Add(new Data.Entities.AgentItem
+                        {
+                            MachineId = machineId,
+                            DataItemId = di,
+                            Mapped = mapped,
+                            LastSeenUtc = DateTime.UtcNow,
+                        });
+                    }
+                    else
+                    {
+                        row.Mapped = mapped;
+                        row.LastSeenUtc = DateTime.UtcNow;
+                    }
+                }
+                // ids the agent no longer publishes
+                var stale = knownIds.Except(seen, StringComparer.OrdinalIgnoreCase).ToList();
+                if (stale.Count > 0)
+                {
+                    db.AgentItems.RemoveRange(db.AgentItems.Where(a => a.MachineId == machineId && stale.Contains(a.DataItemId)));
+                }
             }
 
             await db.SaveChangesAsync();

@@ -58,22 +58,22 @@ public class MetricsEngine
             .ToListAsync();
 
         var lastCountRow = await db.Samples.AsNoTracking()
-            .Where(s => s.MachineId == machine.Id && s.DataItemId == "Mppartcount" && s.TsUtc < shift.StartUtc)
+            .Where(s => s.MachineId == machine.Id && s.PartCount != null && s.TsUtc < shift.StartUtc)
             .OrderByDescending(s => s.TsUtc).ThenByDescending(s => s.Id)
             .FirstOrDefaultAsync();
 
         var lastToolRow = await db.Samples.AsNoTracking()
-            .Where(s => s.MachineId == machine.Id && s.DataItemId == "Mp1CurrentTool" && s.TsUtc < shift.StartUtc)
+            .Where(s => s.MachineId == machine.Id && s.CurrentTool != null && s.TsUtc < shift.StartUtc)
             .OrderByDescending(s => s.TsUtc)
             .FirstOrDefaultAsync();
 
         var lastCuttingRow = await db.Samples.AsNoTracking()
-            .Where(s => s.MachineId == machine.Id && s.DataItemId == "Mp1TotalCuttingTime" && s.TsUtc < shift.StartUtc)
+            .Where(s => s.MachineId == machine.Id && s.TotalCuttingTime != null && s.TsUtc < shift.StartUtc)
             .OrderByDescending(s => s.TsUtc)
             .FirstOrDefaultAsync();
 
         var lastFeedCmdRow = await db.Samples.AsNoTracking()
-            .Where(s => s.MachineId == machine.Id && s.DataItemId == "Mp1Fcmd" && s.TsUtc < shift.StartUtc)
+            .Where(s => s.MachineId == machine.Id && s.FeedCmd != null && s.TsUtc < shift.StartUtc)
             .OrderByDescending(s => s.TsUtc)
             .FirstOrDefaultAsync();
 
@@ -83,10 +83,10 @@ public class MetricsEngine
                         (nowUtc - lastSample.TsUtc).TotalMinutes < 10;
 
         // ---- spindle state & uptime ------------------------------------------------
-        var speedRows = samples.Where(s => s.DataItemId == "MS1speed").ToList();
+        var speedRows = samples.Where(s => s.SpindleSpeed != null).ToList();
 
         var lastSpeedBefore = await db.Samples.AsNoTracking()
-            .Where(s => s.MachineId == machine.Id && s.DataItemId == "MS1speed" && s.TsUtc < shift.StartUtc)
+            .Where(s => s.MachineId == machine.Id && s.SpindleSpeed != null && s.TsUtc < shift.StartUtc)
             .OrderByDescending(s => s.TsUtc).FirstOrDefaultAsync();
         if (lastSpeedBefore != null)
         {
@@ -111,7 +111,7 @@ public class MetricsEngine
         if (lastToolRow?.CurrentTool is int preShiftTool)
             toolTimeline.Add((shift.StartUtc, preShiftTool));
         toolTimeline.AddRange(samples
-            .Where(s => s.DataItemId == "Mp1CurrentTool" && s.CurrentTool != null)
+            .Where(s => s.CurrentTool != null)
             .Select(s => (s.TsUtc, s.CurrentTool!.Value)));
         toolTimeline.Sort((a, b) => a.Ts.CompareTo(b.Ts));
 
@@ -201,7 +201,7 @@ public class MetricsEngine
         // FeedCmd posts on change, so the feed holds its value until the next feed
         // row: intervals [row with feed > 0, next row with feed == 0) are moving
         // time. Pre-shift baseline clamped to the shift start like the speed one.
-        var feedRows = samples.Where(s => s.DataItemId == "Mp1Fcmd" && s.FeedCmd != null).ToList();
+        var feedRows = samples.Where(s => s.FeedCmd != null).ToList();
         if (lastFeedCmdRow != null)
         {
             lastFeedCmdRow.TsUtc = lastFeedCmdRow.TsUtc > shift.StartUtc
@@ -240,7 +240,7 @@ public class MetricsEngine
         {
             var prefix = cfg.CycleVarIndex.ToString() + "=";
             long? prevV = null;
-            foreach (var r in samples.Where(s => s.DataItemId == "Mp1CommonVariable" && s.CommonVars != null)
+            foreach (var r in samples.Where(s => s.CommonVars != null)
                          .OrderBy(r => r.TsUtc))
             {
                 var v = CommonVarValueLong(r.CommonVars!, prefix);
@@ -257,7 +257,7 @@ public class MetricsEngine
         // transition completes one cycle → PartsPerCycle parts. Cycle learning uses
         // the pulse cadence (the flag is a change-only stream, so pulse-to-pulse
         // dt ≈ one full cycle).
-        var countRows = samples.Where(s => s.DataItemId == "Mppartcount").OrderBy(r => r.TsUtc).ToList();
+        var countRows = samples.Where(s => s.PartCount != null).OrderBy(r => r.TsUtc).ToList();
         var cycleSeconds = new List<double>();
         long flagPulses = 0;
         var pulseTss = new List<DateTime>();
@@ -318,7 +318,7 @@ public class MetricsEngine
         // cutting-time estimate as fallback when pulses are missed (e.g. collector
         // outage): whole cycles completed since shift start ≈ cutting seconds
         // advanced / learned cycle. Mp1TotalCuttingTime is seconds and monotonic.
-        var tcutRows = samples.Where(s => s.DataItemId == "Mp1TotalCuttingTime" && s.TotalCuttingTime != null).ToList();
+        var tcutRows = samples.Where(s => s.TotalCuttingTime != null).ToList();
         double? tcutShiftStart = null;
         if (lastCuttingRow != null)
         {
@@ -348,7 +348,7 @@ public class MetricsEngine
         if (cfg.PartsTallyVarIndex > 0)
         {
             var tallyRows = samples
-                .Where(s => s.DataItemId == "Mp1CommonVariable" && s.PartsTally != null)
+                .Where(s => s.PartsTally != null)
                 .OrderBy(r => r.TsUtc).ToList();
             var lastTallySample = tallyRows.LastOrDefault();
             if (lastTallySample?.PartsTally is double tallyVal)
@@ -421,7 +421,7 @@ public class MetricsEngine
         if (cfg.CycleVarIndex > 0)
         {
             var prefix = cfg.CycleVarIndex.ToString() + "=";
-            var lastCvRow = samples.LastOrDefault(s => s.DataItemId == "Mp1CommonVariable" && s.CommonVars != null);
+            var lastCvRow = samples.LastOrDefault(s => s.CommonVars != null);
             if (lastCvRow?.CommonVars is string cvs)
                 cycleVarValue = CommonVarValueLong(cvs, prefix);
         }
@@ -540,7 +540,7 @@ public class MetricsEngine
         if (cfg.CycleVarIndex > 0)
         {
             var cvPrefix = cfg.CycleVarIndex.ToString() + "=";
-            var lastCvRow = samples.LastOrDefault(s => s.DataItemId == "Mp1CommonVariable" && s.CommonVars != null);
+            var lastCvRow = samples.LastOrDefault(s => s.CommonVars != null);
             if (lastCvRow?.CommonVars is string cvs)
             {
                 var pv = CommonVarValueLong(cvs, cvPrefix);
@@ -633,25 +633,20 @@ public class MetricsEngine
     private static bool AxisMovedRecently(List<Sample> samples, DateTime nowUtc)
     {
         var winStart = nowUtc - TimeSpan.FromSeconds(10);
-        foreach (var di in new[] { "MX1actm", "MY1actm", "MZ1actm" })
+        // axis rows are identified by the populated COLUMN, not by the agent's
+        // dataItemId (ids differ per agent build: MX1actm / C13X1actm / ...)
+        foreach (var axis in new Func<Sample, double?>[] { s => s.XAct, s => s.YAct, s => s.ZAct })
         {
-            var axisRows = samples.Where(s => s.DataItemId == di).OrderBy(r => r.TsUtc).ToList();
+            var axisRows = samples.Where(s => axis(s) != null).OrderBy(r => r.TsUtc).ToList();
             var winLast = axisRows.LastOrDefault(s => s.TsUtc >= winStart);
             if (winLast == null) continue;
             var beforeWin = axisRows.LastOrDefault(s => s.TsUtc < winStart);
-            var a = AxisVal(winLast, di);
-            var b = beforeWin == null ? a : AxisVal(beforeWin, di);
+            var a = axis(winLast) ?? 0;
+            var b = beforeWin == null ? a : (axis(beforeWin) ?? 0);
             if (Math.Abs(a - b) > 0.1) return true;
         }
         return false;
     }
-
-    private static double AxisVal(Sample row, string di) => di switch
-    {
-        "MX1actm" => row.XAct ?? 0,
-        "MY1actm" => row.YAct ?? 0,
-        _ => row.ZAct ?? 0,
-    };
 
     // parse one var from a single CommonVars map string as a long (null = absent)
     private static long? CommonVarValueLong(string map, string prefix)
@@ -670,7 +665,7 @@ public class MetricsEngine
     // lookup a single common var value from the latest parsed map ("65=5600;...")
     private static string? CommonVarValue(List<Sample> samples, int varIndex)
     {
-        var row = samples.LastOrDefault(s => s.DataItemId == "Mp1CommonVariable" && s.CommonVars != null);
+        var row = samples.LastOrDefault(s => s.CommonVars != null);
         if (row?.CommonVars is not string map) return null;
         var prefix = varIndex.ToString() + "=";
         foreach (var part in map.Split(';'))
