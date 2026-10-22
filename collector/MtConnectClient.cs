@@ -301,9 +301,27 @@ public class MtConnectClient
 
             if (seqStr == null || !long.TryParse(seqStr, out var agentSeq))
             {
+                // Okuma extension elements (e:Variables -> Mp1CommonVariable,
+                // e:TotalCuttingTime) can lack the sequence attribute. /current
+                // mode tolerates that with an FNV-hash fallback; /sample used
+                // to drop the event entirely, which silently lost a whole
+                // category of data. Use the same fallback here.
+                var fallback = SampleRow.From(di, ts, 0, e);
+                if (fallback is null)
+                {
+                    if (!result.UnmappedItemIds.Contains(di)) result.UnmappedItemIds.Add(di);
+                    continue;
+                }
+                fallback.seq = HashPayload(fallback.ValueCanonical());
+                var fbValue = fallback.ValueCanonical();
+                if (lastValues.TryGetValue(di, out var fbPrev) && fbPrev == fbValue)
+                    continue;
+                lastValues[di] = fbValue;
+                result.Samples.Add(fallback);
+                LogFirstCvPost(fallback, di);
                 if (!seqWarned)
                 {
-                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [debug] sample event without sequence skipped: {di}");
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [debug] sample event without sequence: hash-fallback used for {di}");
                     seqWarned = true;
                 }
                 continue;
@@ -473,26 +491,26 @@ public class SampleRow
 
     public static ItemCategory CategoryOf(string di)
     {
-        if (Has(di, "S1speed") || Has(di, "SpindleSpeed")) return ItemCategory.Speed;
+        if (Has(di, "S1speed") || Has(di, "SpindleSpeed") || Has(di, "RotaryVelocity")) return ItemCategory.Speed;
         if (Has(di, "partcount")) return ItemCategory.Count;
         if (Has(di, "program")) return ItemCategory.Prog;
-        if (Has(di, "CurrentTool")) return ItemCategory.Tool;
+        if (Has(di, "CurrentTool") || Has(di, "ToolNumber")) return ItemCategory.Tool;
         if (Has(di, "execution")) return ItemCategory.Exec;
         if (Has(di, "controllermode")) return ItemCategory.Mode;
         if (Has(di, "pmode")) return ItemCategory.Mode;
-        if (Has(di, "fmode")) return ItemCategory.Fmode;
+        if (Has(di, "fmode") || Has(di, "FunctionalMode")) return ItemCategory.Fmode;
         // TotalSpindleRunTime must be tested BEFORE SpindleRunTime (it ends
         // with it) so the cumulative series is not folded into the per-run one
         if (Has(di, "TotalSpindleRunTime")) return ItemCategory.TotalRuntime;
         if (Has(di, "SpindleRunTime")) return ItemCategory.Runtime;
         if (Has(di, "TotalCuttingTime")) return ItemCategory.TotalCuttingTime;
-        if (Has(di, "Fcmd")) return ItemCategory.Feed;
+        if (Has(di, "Fcmd") || Has(di, "FeedRate")) return ItemCategory.Feed;
         if (Has(di, "X1actm")) return ItemCategory.X;
         if (Has(di, "Y1actm")) return ItemCategory.Y;
         if (Has(di, "Z1actm")) return ItemCategory.Z;
-        if (Has(di, "1line") || Has(di, "LineId")) return ItemCategory.Line;
+        if (Has(di, "1line") || Has(di, "LineId") || Has(di, "LineNumber")) return ItemCategory.Line;
         if (Has(di, "block")) return ItemCategory.Block;
-        if (Has(di, "CommonVariable")) return ItemCategory.CommonVars;
+        if (Has(di, "CommonVariable") || Has(di, "CommonVars")) return ItemCategory.CommonVars;
         return ItemCategory.None;
     }
 

@@ -43,6 +43,29 @@
     </div>
 
     <div class="card wide">
+        <div class="label">Agent data items — @Model.EditMachineId</div>
+        @if (Model.AgentItems.Count == 0)
+        {
+            <div class="muted">No inventory yet — the collector reports it on the next upload.</div>
+        }
+        else
+        {
+            <div class="muted">@Model.AgentItemsMapped mapped &middot; @Model.AgentItemsUnmapped unmapped (published by the agent, not mapped by the collector)</div>
+            <table class="tools">
+                <tr><th>Data item id</th><th>Status</th><th>Last seen</th></tr>
+                @foreach (var it in Model.AgentItems)
+                {
+                    <tr>
+                        <td class="mono">@it.DataItemId</td>
+                        <td>@(it.Mapped ? "mapped" : "UNMAPPED")</td>
+                        <td class="muted">@it.LastSeenUtc.ToString("MM-dd HH:mm")</td>
+                    </tr>
+                }
+            </table>
+        }
+    </div>
+
+    <div class="card wide">
         <div class="label">Configuration — @Model.EditMachineId</div>
         <form method="post" asp-page-handler="Save">
             <input type="hidden" asp-for="EditMachineId" />

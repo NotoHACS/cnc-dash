@@ -24,6 +24,12 @@ public class IndexModel : PageModel
     public List<MachineRow> Machines { get; set; } = new();
     public string Message { get; set; } = "";
 
+    // the agent's data-item inventory for the selected machine: which items the
+    // agent publishes and which the collector could not map
+    public List<AgentItemRow> AgentItems { get; set; } = new();
+    public int AgentItemsMapped { get; set; }
+    public int AgentItemsUnmapped { get; set; }
+
     [BindProperty] public string EditMachineId { get; set; } = "";
     [BindProperty] public bool Shift1Enabled { get; set; }
     [BindProperty] public string? Shift1Start { get; set; }
@@ -78,7 +84,10 @@ public class IndexModel : PageModel
         target ??= await db.Machines.AsNoTracking().OrderBy(m => m.Id).FirstOrDefaultAsync();
 
         if (target != null)
+        {
             LoadForm(target.Id);
+            await LoadAgentItems(target.Id);
+        }
         return Page();
     }
 
@@ -143,6 +152,22 @@ public class IndexModel : PageModel
         await db.SaveChangesAsync();
         Message = $"machine '{id}' created, API key generated";
         return RedirectToPage(new { machine = id });
+    }
+
+    private async Task LoadAgentItems(string machineId)
+    {
+        var rows = await db.AgentItems.AsNoTracking()
+            .Where(a => a.MachineId == machineId)
+            .OrderBy(a => a.Mapped).ThenBy(a => a.DataItemId)
+            .ToListAsync();
+        AgentItems = rows.Select(a => new AgentItemRow
+        {
+            DataItemId = a.DataItemId,
+            Mapped = a.Mapped,
+            LastSeenUtc = a.LastSeenUtc,
+        }).ToList();
+        AgentItemsMapped = rows.Count(r => r.Mapped);
+        AgentItemsUnmapped = rows.Count(r => !r.Mapped);
     }
 
     private void LoadForm(string machineId)
@@ -222,5 +247,12 @@ public class IndexModel : PageModel
         public string DisplayName { get; set; } = default!;
         public string ApiKey { get; set; } = default!;
         public string Topic { get; set; } = default!;
+    }
+
+    public class AgentItemRow
+    {
+        public string DataItemId { get; set; } = default!;
+        public bool Mapped { get; set; }
+        public DateTime LastSeenUtc { get; set; }
     }
 }

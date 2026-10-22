@@ -165,6 +165,28 @@ app.MapGet("/api/status/{segment}", async (string segment, MachineResolver resol
 // latest ntfy post on the MACHINE'S alarm topic (server-side subscription via
 // AlarmFeedService, one topic per machine); null body when the topic has
 // nothing recent. Without ?machine= it falls back to the first machine.
+// the agent's real data-item inventory for a machine: every id it published
+// and whether the collector could map it. A missing dashboard feature is
+// attributable to the agent (id never published) vs the collector (published
+// but unmapped) without touching the machine box.
+app.MapGet("/api/agentitems/{segment}", async (string segment, MachineResolver resolver, CncDbContext db) =>
+{
+    var resolved = await resolver.ResolveAsync(segment);
+    if (resolved?.Machine is not { } machine) return Results.NotFound();
+    var rows = await db.AgentItems.AsNoTracking()
+        .Where(a => a.MachineId == machine.Id)
+        .OrderBy(a => a.Mapped).ThenBy(a => a.DataItemId)
+        .ToListAsync();
+    return Results.Ok(new
+    {
+        machine = machine.Id,
+        total = rows.Count,
+        mapped = rows.Count(r => r.Mapped),
+        unmapped = rows.Count(r => !r.Mapped),
+        items = rows.Select(r => new { r.DataItemId, r.Mapped, r.LastSeenUtc }),
+    });
+});
+
 app.MapGet("/api/alarmfeed", async (string? machine, AlarmFeedService feed, CncDbContext db) =>
 {
     var id = machine?.Trim();
