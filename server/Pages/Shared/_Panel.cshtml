@@ -122,14 +122,17 @@
     </div>
 </div>
 
-@* Alarm bar markup lives at panel top (above the cycle card) — see alarmbar div there. *@
-@* Alarm bar: server subscribes to the ntfy topic (AlarmFeedService) and
-   exposes the latest message; this polls the local API, not ntfy directly. *@
+@* Alarm bar markup lives at panel top (above the cycle card) - see alarmbar div there. *@
+@* Alarm bar: the server subscribes to this machine's OWN ntfy topic
+   (AlarmFeedService, topic = MachineConfig.NtfyTopic or the machine id) and
+   exposes the latest message for it; this polls the local API per machine,
+   not ntfy directly. *@
 <script>
 (function () {
+    var machine = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(s.MachineId));
     function esc(t) { return (t || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
     function tick() {
-        fetch("/api/alarmfeed", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (d) {
+        fetch("/api/alarmfeed?machine=" + encodeURIComponent(machine), { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (d) {
             var bar = document.getElementById("alarmbar");
             if (!bar) return;
             if (!d || !d.title) { bar.innerHTML = ""; bar.style.display = "none"; return; }
@@ -147,7 +150,8 @@
         }).catch(function () { });
     }
     tick();
-    setInterval(tick, 10000);
+    // one interval per machine page: the htmx live swap re-runs this script
+    if (!window.__alarmFeedTimer) { window.__alarmFeedTimer = setInterval(tick, 10000); }
 })();
 </script>
 

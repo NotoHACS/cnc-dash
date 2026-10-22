@@ -92,6 +92,7 @@ using (var scope = app.Services.CreateScope())
     await EnsureColumnAsync(sqconn, "MachineConfigs", "StationsVarIndex", "INTEGER NOT NULL DEFAULT 40");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "PartNameVarIndex", "INTEGER NOT NULL DEFAULT 65");
     await EnsureColumnAsync(sqconn, "MachineConfigs", "QuotaParts", "INTEGER NOT NULL DEFAULT 48");
+    await EnsureColumnAsync(sqconn, "MachineConfigs", "NtfyTopic", "TEXT NULL");
     if (sqconn.State == ConnectionState.Open) await sqconn.CloseAsync();
 
     if (!await db.Machines.AnyAsync())
@@ -142,11 +143,18 @@ app.MapGet("/api/status/{segment}", async (string segment, MachineResolver resol
     return status is null ? Results.NotFound() : Results.Ok(status);
 });
 
-// latest ntfy post on the machine's alarm topic (server-side subscription via
-// AlarmFeedService); null body when the topic has nothing recent
-app.MapGet("/api/alarmfeed", (AlarmFeedService feed) =>
+// latest ntfy post on the MACHINE'S alarm topic (server-side subscription via
+// AlarmFeedService, one topic per machine); null body when the topic has
+// nothing recent. Without ?machine= it falls back to the first machine.
+app.MapGet("/api/alarmfeed", async (string? machine, AlarmFeedService feed, CncDbContext db) =>
 {
-    var snap = feed.Snapshot();
+    var id = machine?.Trim();
+    if (string.IsNullOrEmpty(id))
+    {
+        id = await db.Machines.AsNoTracking().OrderBy(m => m.Id).Select(m => m.Id).FirstOrDefaultAsync();
+        if (string.IsNullOrEmpty(id)) return Results.NotFound();
+    }
+    var snap = feed.Snapshot(id);
     return snap is null ? Results.NotFound() : Results.Ok(snap);
 });
 

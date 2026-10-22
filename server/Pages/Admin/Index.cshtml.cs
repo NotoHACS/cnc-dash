@@ -49,9 +49,11 @@ public class IndexModel : PageModel
     [BindProperty] public int PartNameVarIndex { get; set; }
     [BindProperty] public int QuotaParts { get; set; }
     [BindProperty] public string? TimeZone { get; set; }
+    [BindProperty] public string? NtfyTopic { get; set; }
 
     [BindProperty] public string? NewMachineId { get; set; }
     [BindProperty] public string? NewMachineName { get; set; }
+    [BindProperty] public string? NewMachineTopic { get; set; }
 
     public async Task<IActionResult> OnGet(string? machine)
     {
@@ -110,6 +112,8 @@ public class IndexModel : PageModel
         cfg.PartNameVarIndex = Math.Max(0, PartNameVarIndex);
         cfg.QuotaParts = Math.Max(0, QuotaParts);
         cfg.TimeZone = string.IsNullOrWhiteSpace(TimeZone) ? cfg.TimeZone : TimeZone.Trim();
+        // blank topic = the machine id (cnc8 -> topic "cnc8")
+        cfg.NtfyTopic = string.IsNullOrWhiteSpace(NtfyTopic) ? null : NtfyTopic.Trim();
 
         await db.SaveChangesAsync();
         Message = $"saved config for {EditMachineId}";
@@ -126,13 +130,15 @@ public class IndexModel : PageModel
             return Page();
         }
         var key = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        // blank topic = the machine id (cnc8 -> ntfy topic "cnc8")
+        var topic = string.IsNullOrWhiteSpace(NewMachineTopic) ? null : NewMachineTopic.Trim();
         db.Machines.Add(new Machine
         {
             Id = id,
             ApiKey = key,
             DisplayName = string.IsNullOrWhiteSpace(NewMachineName) ? id.ToUpperInvariant() : NewMachineName.Trim(),
             CreatedAtUtc = DateTime.UtcNow,
-            Config = new MachineConfig { MachineId = id },
+            Config = new MachineConfig { MachineId = id, NtfyTopic = topic },
         });
         await db.SaveChangesAsync();
         Message = $"machine '{id}' created, API key generated";
@@ -158,6 +164,7 @@ public class IndexModel : PageModel
         PartNameVarIndex = cfg.PartNameVarIndex;
         QuotaParts = cfg.QuotaParts;
         TimeZone = cfg.TimeZone;
+        NtfyTopic = cfg.NtfyTopic ?? "";
 
         Shift1Enabled = cfg.Shift1Start != null;
         Shift1Start = FormatMinutes(cfg.Shift1Start);
@@ -192,16 +199,28 @@ public class IndexModel : PageModel
             && int.TryParse((((int)ts.TotalMinutes)).ToString(), out minutes);
     }
 
-    private async Task<List<MachineRow>> LoadMachines() =>
-        await db.Machines.AsNoTracking()
+    private async Task<List<MachineRow>> LoadMachines()
+    {
+        var rows = await db.Machines.AsNoTracking()
             .OrderBy(m => m.Id)
             .Select(m => new MachineRow { Id = m.Id, DisplayName = m.DisplayName, ApiKey = m.ApiKey })
             .ToListAsync();
+        // alarm topic per machine (blank = the machine id) - loaded separately so
+        // the projection above stays a plain expression tree
+        var topics = await db.MachineConfigs.AsNoTracking()
+            .Select(c => new { c.MachineId, c.NtfyTopic })
+            .ToListAsync();
+        var byId = topics.ToDictionary(t => t.MachineId, t => t.NtfyTopic);
+        foreach (var r in rows)
+            r.Topic = byId.TryGetValue(r.Id, out var t) && !string.IsNullOrWhiteSpace(t) ? t : r.Id;
+        return rows;
+    }
 
     public class MachineRow
     {
         public string Id { get; set; } = default!;
         public string DisplayName { get; set; } = default!;
         public string ApiKey { get; set; } = default!;
+        public string Topic { get; set; } = default!;
     }
 }

@@ -74,5 +74,10 @@ public class MachineConfig
     // Shift quota in parts (0 = off): quota gauge card on the dashboard.
     public int QuotaParts { get; set; } = 48;
 
+    // ntfy topic this machine's alarm poller posts to. Blank/null = the
+    // machine id (cnc8 -> topic "cnc8"). Each topic is polled separately so
+    // the alarm bar only ever shows THIS machine's alarms.
+    public string? NtfyTopic { get; set; }
+
     public Machine? Machine { get; set; }
 }

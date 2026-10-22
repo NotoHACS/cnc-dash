@@ -23,19 +23,21 @@
     <div class="card wide">
         <div class="label">Machines</div>
         <table class="tools">
-            <tr><th>ID</th><th>Display name</th><th>API key</th></tr>
+            <tr><th>ID</th><th>Display name</th><th>API key</th><th>Alarm topic</th></tr>
             @foreach (var m in Model.Machines)
             {
                 <tr class="@(Model.EditMachineId == m.Id ? "selected" : "")">
                     <td><a href="/dashboard/admin/@m.Id">@m.Id</a></td>
                     <td>@m.DisplayName</td>
                     <td class="muted mono">@m.ApiKey</td>
+                    <td class="muted mono">@m.Topic</td>
                 </tr>
             }
         </table>
         <form method="post" asp-page-handler="AddMachine" class="inline-form">
             <input asp-for="NewMachineId" placeholder="machine id (e.g. cnc7)" required />
             <input asp-for="NewMachineName" placeholder="display name (e.g. CNC 7)" />
+            <input asp-for="NewMachineTopic" placeholder="ntfy topic (blank = machine id)" />
             <button type="submit">+ Add machine</button>
         </form>
     </div>
@@ -82,6 +84,7 @@
                 <label>Probe tool number (0 = none) <input type="number" min="0" step="1" asp-for="ProbeToolNumber" /></label>
                 <label>Learning window (cycles) <input type="number" min="3" asp-for="CycleLearningWindow" /></label>
                 <label>Time zone (IANA, e.g. America/New_York) <input asp-for="TimeZone" /></label>
+                <label>ntfy alarm topic (blank = machine id) <input asp-for="NtfyTopic" /></label>
             </div>
             <button type="submit">Save</button>
         </form>
